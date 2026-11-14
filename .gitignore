@@ -1,0 +1,15 @@
+# Build output
+.pio/
+manager/obj/
+dist/
+FermFrame.exe
+
+# Old installer package (replaced by the app)
+FermFrame-Installer.zip
+
+# Firmware backups from other projects - not ours to share
+backup-*.bin
+
+# Editors
+.vscode/
+*.user

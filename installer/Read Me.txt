@@ -1,0 +1,72 @@
+=====================================================================
+  FERMFRAME INSTALLER
+  Turns a Geekmagic "Smart Weather Clock" into a little screen that
+  shows your beer's fermentation graph from Brewfather or a RAPT Pill.
+  Once it's set up, your PC doesn't need to stay on.
+=====================================================================
+
+WHAT YOU NEED
+  - A Geekmagic "Smart Weather Clock" (the small cube with a colour
+    screen; not the "SmallTV Pro").
+  - A Windows 10 or 11 PC or laptop WITH WI-FI.
+  - Your home Wi-Fi name and password. Most clocks need 2.4 GHz Wi-Fi.
+  - Brewfather: your User ID and an API key
+      (Brewfather > Settings > API > Generate API key, tick "Read batches")
+    or RAPT: your RAPT email and an API secret
+      (RAPT website > My account > API Secrets > Create)
+
+HOW TO DO IT (about 5 minutes)
+  1. Unzip this folder (right-click > Extract All).
+  2. Plug the clock into power. A USB phone charger is fine.
+     It does NOT need a cable to the PC.
+  3. Double-click  "FermFrame Installer.bat".
+     If Windows asks whether to run it, choose "More info" > "Run anyway"
+     (or "Run").
+  4. Fill in your Wi-Fi and your Brewfather or RAPT details.
+  5. Press "Set up my clock" and wait. Your PC leaves its Wi-Fi for a
+     minute or two while it talks to the clock. That's normal, and it
+     comes back by itself.
+  6. Done! The graph appears on the clock.
+
+AFTERWARDS
+  - Change settings: open  http://fermframe.local  in a browser, or
+    scan the QR code that shows on the clock when it needs fixing.
+  - A new brew: set the batch to "Fermenting" in Brewfather and the
+    clock picks it up within 5 minutes.
+  - Brewfather keeps ONE API key per account. If you ever press
+    "Generate API key" again, the old key stops working: put the new
+    key on every clock (open http://fermframe.local or scan the QR code).
+    Several clocks can share the same key.
+  - Power cut? The clock reconnects by itself. If the router is slow
+    to come back, the clock keeps retrying every few minutes.
+
+MAKE IT YOURS
+  Open http://fermframe.local on your phone or PC and scroll to
+  "Look & feel": themes, your own colours, font, brightness, dimming at
+  night, graph style (line, filled, dots, daily bars), time range,
+  rotating pages (graph, big number, clock, your other brews) and a
+  "Ready to keg?" badge. The picture at the top shows what the clock
+  will look like before you press Save.
+
+IF SOMETHING GOES WRONG
+  "Can't find the clock"
+     Unplug the clock, count to 5, plug it in, wait 30 seconds and
+     press the button again. Keep the clock near the PC.
+  "Windows needs Location turned on"
+     Windows 11 only shows Wi-Fi networks to programs when Location is
+     on. Turn on "Location services" and "Let desktop apps access your
+     location", then try again.
+  The clock says "Can't find Wi-Fi"
+     The Wi-Fi name or password was wrong, or your Wi-Fi is 5 GHz only.
+     Scan the QR code on the clock with your phone and fix it there.
+  The clock says "wrong ID or API key" / "wrong email or API secret"
+     Make a new key or secret and run the installer again.
+  The clock says "No Fermenting batch in Brewfather"
+     Set your batch's status to Fermenting in Brewfather.
+
+GOOD TO KNOW
+  - This replaces the clock's weather-clock software. Your details are
+    stored only on the clock.
+  - FermFrame is homemade and isn't made by Geekmagic, Brewfather,
+    RAPT or KegLand. Use it at your own risk.
+=====================================================================

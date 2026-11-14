@@ -1,0 +1,22 @@
+{
+  "model": "Smart Weather Desktop Clock (GeekMagic SmallTV / SmallTV-Ultra)",
+  "intro": "FermFrame was tested on the yellow and white \"Smart Weather Desktop Clock\" from the first shop below. Other shops sell the same clock under GeekMagic SmallTV names - check the listing before you buy.",
+  "lookFor": [
+    "\"Smart Weather Desktop Clock\" - yellow, white or black (the tested listing)",
+    "or GeekMagic SmallTV / SmallTV-Ultra",
+    "ESP8266 or ESP-12F chip, if the listing says which chip"
+  ],
+  "avoid": [
+    "SmallTV Pro (it has an ESP32 chip)",
+    "ESP32 or ESP32-C2 versions",
+    "Crystal cube, UFO, transparent-screen or other GeekMagic shapes"
+  ],
+  "shops": [
+    { "name": "AliExpress - the tested clock", "featured": true, "regions": [], "url": "https://www.aliexpress.com/item/1005012242691035.html" },
+    { "name": "Amazon UK", "regions": ["GB", "IE"], "url": "https://www.amazon.co.uk/s?k=GeekMagic+SmallTV+Ultra" },
+    { "name": "eBay UK", "regions": ["GB", "IE"], "url": "https://www.ebay.co.uk/sch/i.html?_nkw=geekmagic+smalltv+ultra" },
+    { "name": "Amazon US", "regions": ["US", "CA"], "url": "https://www.amazon.com/s?k=GeekMagic+SmallTV+Ultra" },
+    { "name": "Amazon Germany", "regions": ["DE", "AT", "NL", "BE", "FR"], "url": "https://www.amazon.de/s?k=GeekMagic+SmallTV+Ultra" },
+    { "name": "Search AliExpress", "regions": [], "url": "https://www.aliexpress.com/w/wholesale-geekmagic-smalltv-ultra.html" }
+  ]
+}
