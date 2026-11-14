@@ -3,6 +3,8 @@
 *For FermFrame app 1.0 and FermFrame firmware 2.2. The pictures use made-up FermFrames ("Garage fridge",
 "Brew closet" and "Kitchen") – yours will show your own names and brews.*
 
+*Prefer watching? There's a 3-minute [video guide on YouTube](https://youtu.be/npmeVGuBcoU).*
+
 ---
 
 ## Contents

@@ -6,6 +6,10 @@ shows your fermentation from **Brewfather** or **RAPT**: gravity, temperature, A
 **Download `FermFrame-1.0.0.exe` below** (Windows 10/11), open it and click **Install**.
 Windows may say "Windows protected your PC" because the app isn't signed – click **More info → Run anyway**.
 
+### Guides
+- **Video guide** (2 min 48 s, with captions): [watch on YouTube](https://youtu.be/npmeVGuBcoU), or download `FermFrame-guide.mp4` below
+- **User manual:** [docs/MANUAL.md](https://github.com/ammcknockiter-cyber/FermFrame/blob/main/docs/MANUAL.md)
+
 ### In this release
 - Windows app: finds your FermFrames on Wi-Fi, shows each brew and its graph, changes every setting and
   updates the firmware – one file, installs just for you, no admin rights

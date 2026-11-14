@@ -7,7 +7,7 @@ display that shows your brew's gravity, temperature, ABV and a graph, straight f
 The free Windows app sets up new displays, shows all of them in one place, changes their settings and keeps
 their firmware up to date.
 
-**[Read the full manual](docs/MANUAL.md)** · **[Watch the 3-minute video guide](https://github.com/ammcknockiter-cyber/FermFrame/releases/latest)**
+**[Read the full manual](docs/MANUAL.md)** · **[Watch the 3-minute video guide on YouTube](https://youtu.be/npmeVGuBcoU)**
 
 ## What you need
 
