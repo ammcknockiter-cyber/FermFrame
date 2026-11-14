@@ -10,7 +10,7 @@ if (Test-Path $out) { Remove-Item $out -Recurse -Force }
 $publish = @(
   '.gitignore', 'LICENSE', 'README.md', 'THIRD-PARTY-NOTICES.txt', 'platformio.ini',
   'src\main.cpp',
-  'docs\*.md',
+  'docs\*.md', 'docs\manual\images\*.png', 'docs\tools\*.ps1', 'docs\video\script.md', 'docs\video\FermFrame-guide.srt',
   'manager\FermFrameApp.cs', 'manager\build.ps1', 'manager\prepare-github.ps1', 'manager\shops.json', 'manager\README.md',
   'manager\project-url.txt', 'manager\shops-url.txt',
   'installer\FermFrame Installer.bat', 'installer\Read Me.txt',
@@ -27,9 +27,13 @@ foreach ($pattern in $publish) {
   }
 }
 
-# Last check: nothing personal or private in the text files
-$bad = Get-ChildItem $out -Recurse -File | Where-Object { $_.Extension -notin '.bin' -and $_.Name -ne 'prepare-github.ps1' } |
-  Select-String -Pattern 'backup-rapthooker|PLUSNET|\\Users\\[^\\<>"]+\\' -List
+# Last check: nothing personal or private in the text files. Your own words to look for (Wi-Fi name, account
+# IDs, ...) go one per line in manager\private-words.txt, which is never uploaded.
+$words = @('backup-rapthooker', '\\Users\\[^\\<>"]+\\', 'sk_[0-9a-f]{20,}')
+$priv = Join-Path $PSScriptRoot 'private-words.txt'
+if (Test-Path $priv) { $words += Get-Content $priv | Where-Object { $_.Trim() } | ForEach-Object { [regex]::Escape($_.Trim()) } }
+$bad = Get-ChildItem $out -Recurse -File | Where-Object { $_.Extension -notin '.bin', '.png' } |
+  Select-String -Pattern ($words -join '|') -List
 if ($bad) { $bad | ForEach-Object { Write-Warning "Check before uploading: $($_.Path):$($_.LineNumber)" } }
 
 Write-Host "$n files ready in $out"

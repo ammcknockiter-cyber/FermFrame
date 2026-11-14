@@ -53,6 +53,13 @@ namespace FermFrame
             Application.ThreadException += (s, e) => MessageBox.Show("Something went wrong:\n\n" + e.Exception.Message, "FermFrame", MessageBoxButtons.OK, MessageBoxIcon.Error);
 
             var a = args.Select(x => x.ToLowerInvariant()).ToList();
+            if (a.Contains("/demo"))
+            {
+                Demo.On = true;
+                // /demo /installer: show the first-run install window as a new user sees it (for the manual)
+                if (a.Contains("/installer")) { using (var f = new InstallForm()) Application.Run(f); return; }
+                a.Add("/portable");
+            }
             if (a.Contains("/uninstall")) { Setup.Uninstall(a.Contains("/quiet")); return; }
             if (a.Contains("/install"))   // for scripted installs: /install [/nodesktop] [/quiet]
             {
@@ -222,7 +229,7 @@ namespace FermFrame
             StartPosition = FormStartPosition.CenterScreen;
             FormBorderStyle = FormBorderStyle.FixedSingle; MaximizeBox = false;
 
-            string have = Setup.InstalledVersion;
+            string have = Demo.On ? null : Setup.InstalledVersion;
             bool newer = have != null && Firmware.Older(have, AppInfo.Version);
             bool same = have != null && !newer;
 
@@ -255,6 +262,7 @@ namespace FermFrame
 
         void Launch()
         {
+            if (Demo.On) { Close(); return; }
             try { Process.Start(new ProcessStartInfo(Setup.Exe) { WorkingDirectory = Setup.Dir }); } catch (Exception ex) { Say(ex.Message, true); return; }
             Close();
         }
@@ -267,6 +275,7 @@ namespace FermFrame
 
         void DoInstall()
         {
+            if (Demo.On) { Say("Demo mode: nothing was installed.", false); return; }
             go.Enabled = false; Say("Installing...", false); Refresh();
             try
             {
@@ -546,8 +555,18 @@ namespace FermFrame
             FlatStyle = FlatStyle.Flat; BackColor = UI.Field; ForeColor = Color.White;
         }
 
+        [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h, int msg, IntPtr w, IntPtr l);
+
         protected override void WndProc(ref Message m)
         {
+            // Mouse wheel over a closed list scrolls the page instead of quietly changing the choice
+            if (m.Msg == 0x020A && !DroppedDown)
+            {
+                Control p = Parent;
+                while (p != null && !(p is ScrollableControl && ((ScrollableControl)p).AutoScroll)) p = p.Parent;
+                if (p != null) SendMessage(p.Handle, m.Msg, m.WParam, m.LParam);
+                return;
+            }
             base.WndProc(ref m);
             if (m.Msg != 0x000F || !IsHandleCreated) return;   // WM_PAINT
             using (var g = Graphics.FromHwnd(Handle))
@@ -809,16 +828,19 @@ namespace FermFrame
 
         public static Resp Get(string url, int seconds)
         {
+            if (Demo.On && Demo.Mine(url)) return Demo.Handle(url, null, null);
             return Send(t => http.GetAsync(url, t), seconds);
         }
 
         public static Resp PostForm(string url, Dictionary<string, string> fields, int seconds)
         {
+            if (Demo.On && Demo.Mine(url)) return Demo.Handle(url, fields, null);
             return Send(t => http.PostAsync(url, new FormUrlEncodedContent(fields), t), seconds);
         }
 
         public static Resp PostFile(string url, string field, string fileName, byte[] bytes, int seconds)
         {
+            if (Demo.On && Demo.Mine(url)) return Demo.Handle(url, null, bytes);
             var mp = new MultipartFormDataContent();
             var fc = new ByteArrayContent(bytes);
             fc.Headers.ContentType = System.Net.Http.Headers.MediaTypeHeaderValue.Parse("application/octet-stream");
@@ -880,6 +902,7 @@ namespace FermFrame
         // Looks at every address on the home network for clocks
         public static List<Found> Scan(bool includeStock)
         {
+            if (Demo.On) return Demo.Scan();
             var ips = new List<string>();
             foreach (var p in LocalPrefixes()) for (int n = 1; n < 255; n++) ips.Add(p + "." + n);
 
@@ -914,6 +937,122 @@ namespace FermFrame
         }
     }
 
+    // ------------------------------------------------------------------ demo mode (for the manual and video)
+    // FermFrame.exe /demo (or FERMFRAME_DEMO=1): made-up FermFrames answer instead of real ones.
+    // Nothing real is contacted or changed and nothing is saved; the shop list still loads normally.
+
+    static class Demo
+    {
+        public static bool On = Environment.GetEnvironmentVariable("FERMFRAME_DEMO") == "1";
+        const string Net3 = "192.168.0.";
+
+        class Dev
+        {
+            public string Mac, Ip, Name, Brew; public bool Online;
+            public double Og, Sg, Temp; public int Day, Bat, Readings, Brews; public bool Ready;
+            public double[] S, T;
+            public Dictionary<string, string> V; public HashSet<string> On;
+        }
+
+        static readonly List<Dev> devs = Make();
+
+        static List<Dev> Make()
+        {
+            var list = new List<Dev>
+            {
+                new Dev { Mac = "A4:CF:12:3B:9E:01", Ip = Net3 + "21", Name = "Garage fridge", Brew = "West Coast IPA", Online = true,
+                          Og = 1.062, Sg = 1.013, Temp = 18.6, Day = 9, Bat = 82, Readings = 412, Brews = 2 },
+                new Dev { Mac = "A4:CF:12:3B:9E:02", Ip = Net3 + "22", Name = "Brew closet", Brew = "Oatmeal Stout", Online = true,
+                          Og = 1.058, Sg = 1.019, Temp = 19.4, Day = 12, Bat = 64, Readings = 590, Brews = 1, Ready = true },
+                new Dev { Mac = "A4:CF:12:3B:9E:03", Ip = Net3 + "23", Name = "Kitchen", Brew = "", Online = false },
+            };
+            var rnd = new Random(7);
+            foreach (var d in list)
+            {
+                d.S = new double[88]; d.T = new double[88];
+                for (int i = 0; i < 88; i++)
+                {
+                    double f = 1 / (1 + Math.Exp((i - (d.Ready ? 30 : 42)) / 7.0));
+                    d.S[i] = Math.Round(d.Sg + (d.Og - d.Sg) * f + (rnd.NextDouble() - 0.5) * 0.0006, 4);
+                    d.T[i] = Math.Round(d.Temp + 0.6 * Math.Sin(i / 8.0) + (i < 6 ? (6 - i) * 0.25 : 0) + (rnd.NextDouble() - 0.5) * 0.3, 2);
+                }
+                d.V = new Dictionary<string, string>
+                {
+                    { "ssid", "MyHomeWiFi" }, { "source", "brewfather" }, { "user", "aB3dE5fG7hJ9kL1mN3pQ5rS7tU9v" }, { "device", "" },
+                    { "unit", "C" }, { "tz", "GMT0BST,M3.5.0/1,M10.5.0" }, { "refresh", "5" },
+                    { "theme", "beer" }, { "cBg", "#000000" }, { "cText", "#ffffff" }, { "cSg", "#ffcc00" }, { "cTemp", "#5bbeff" }, { "cGrid", "#2a2a2a" }, { "cDim", "#8c8c8c" },
+                    { "font", "digital" }, { "bright", "80" }, { "nFrom", "22:00" }, { "nTo", "07:00" }, { "nLevel", "5" },
+                    { "graph", "line" }, { "plot", "both" }, { "range", "168" }, { "pageSecs", "10" },
+                };
+                d.On = new HashSet<string> { "pgGraph", "keg", "night" };
+            }
+            return list;
+        }
+
+        public static List<Clock> Clocks()
+        {
+            return devs.Select(d => new Clock { Mac = d.Mac, Ip = d.Ip, Name = d.Name }).ToList();
+        }
+
+        static Dev ByUrl(string url)
+        {
+            var m = Regex.Match(url ?? "", "^http://(" + Regex.Escape(Net3) + "\\d+)");
+            return m.Success ? devs.FirstOrDefault(d => d.Ip == m.Groups[1].Value) : null;
+        }
+
+        public static bool Mine(string url) { return Regex.IsMatch(url ?? "", "^http://" + Regex.Escape(Net3) + "\\d+"); }
+
+        static string H(string s) { return WebUtility.HtmlEncode(s ?? ""); }
+
+        // Answers a request to a demo FermFrame (null = not a demo address)
+        public static Resp Handle(string url, Dictionary<string, string> form, byte[] file)
+        {
+            if (!Mine(url)) return null;
+            var d = ByUrl(url);
+            Thread.Sleep(file != null ? 4000 : 250);   // feel like a real device
+            if (d == null || !d.Online) return new Resp { Status = 0, Error = "timed out" };
+            var path = Regex.Replace(url, "^http://[^/]+", "");
+            if (path == "/fermframe.json") return Ok(Net.ToJson(new Dictionary<string, object> {
+                { "firmware", "fermframe" }, { "build", "full" }, { "version", Bundled.Version }, { "mac", d.Mac }, { "mode", "wifi" }, { "ip", d.Ip },
+                { "wifi", d.V["ssid"] }, { "account", true }, { "problem", "" }, { "heap", 37400 }, { "readings", d.Readings }, { "brews", d.Brews } }));
+            if (path == "/graph.json") return Ok(Net.ToJson(new Dictionary<string, object> {
+                { "name", d.Brew }, { "sg", d.Sg }, { "temp", d.Temp }, { "og", d.Og }, { "bat", d.Bat }, { "day", d.Day }, { "ready", d.Ready ? 1 : 0 },
+                { "s", d.S }, { "t", d.T } }));
+            if (path == "/save" && form != null)
+            {
+                foreach (var kv in form) if (d.V.ContainsKey(kv.Key) && !(kv.Key == "secret" || kv.Key == "pass")) d.V[kv.Key] = kv.Value;
+                if (form.ContainsKey("look")) { d.On.Clear(); foreach (var k in new[] { "night", "pgGraph", "pgBig", "pgClock", "pgBrews", "keg" }) if (form.ContainsKey(k)) d.On.Add(k); }
+                return Ok("<h2>Saved!</h2>");
+            }
+            if (path == "/update" && file != null) return Ok("Update Success! Rebooting...");
+            if (path == "/" || path == "") return Ok(SettingsPage(d));
+            return new Resp { Status = 404, Body = "Not found" };
+        }
+
+        static Resp Ok(string body) { return new Resp { Status = 200, Body = body }; }
+
+        // The same form fields the real settings page has, so the app reads it the normal way
+        static string SettingsPage(Dev d)
+        {
+            var b = new StringBuilder("<html><head><title>FermFrame</title></head><body><form method=post action=/save><input type=hidden name=look value=1>");
+            foreach (var k in new[] { "ssid", "user", "device", "cBg", "cText", "cSg", "cTemp", "cGrid", "cDim", "bright", "nFrom", "nTo", "pageSecs", "refresh" })
+                b.Append("<input name=" + k + " value=\"" + H(d.V[k]) + "\">");
+            b.Append("<input name=pass type=password placeholder=\"(saved - leave blank to keep)\"><input name=secret type=password placeholder=\"(saved - leave blank to keep)\">");
+            b.Append("<input type=radio name=source value=" + d.V["source"] + " checked><input type=radio name=unit value=" + d.V["unit"] + " checked>");
+            foreach (var k in new[] { "tz", "theme", "font", "nLevel", "graph", "plot", "range" })
+                b.Append("<select name=" + k + "><option value=\"" + H(d.V[k]) + "\" selected>x</option></select>");
+            foreach (var k in d.On) b.Append("<input type=checkbox name=" + k + " value=1 checked>");
+            b.Append("</form></body></html>");
+            return b.ToString();
+        }
+
+        public static List<Found> Scan()
+        {
+            Thread.Sleep(1500);
+            return devs.Where(d => d.Online).Select(d => new Found { Kind = "fermframe", Ip = d.Ip, Info = Net.Json(Handle("http://" + d.Ip + "/fermframe.json", null, null).Body) }).ToList();
+        }
+    }
+
     // ------------------------------------------------------------------ a clock and the list of them
 
     class Clock
@@ -937,12 +1076,14 @@ namespace FermFrame
 
         public static List<Clock> Load()
         {
+            if (Demo.On) return Demo.Clocks();
             try { if (File.Exists(File_)) return Net.FromJson<List<Clock>>(File.ReadAllText(File_)) ?? new List<Clock>(); } catch { }
             return new List<Clock>();
         }
 
         public static void Save(List<Clock> clocks)
         {
+            if (Demo.On) return;
             try { Directory.CreateDirectory(Dir); File.WriteAllText(File_, Net.ToJson(clocks)); } catch { }
         }
     }
@@ -1479,7 +1620,7 @@ namespace FermFrame
             details = UI.Lbl("", 9, false, UI.Dim); details.Location = new Point(0, 0);
             var btns = new FlowLayoutPanel { Location = new Point(0, 36), Size = new Size(900, 46), WrapContents = false };
             var refresh = UI.Btn("Refresh"); refresh.Click += (s, e) => Poll(false);
-            var web = UI.Btn("Open the FermFrame's web page"); web.Click += (s, e) => { if (Sel != null && Sel.Ip != "") Process.Start(Sel.Base + "/"); };
+            var web = UI.Btn("Open the FermFrame's web page"); web.Click += (s, e) => { if (Sel != null && Sel.Ip != "" && !Demo.On) Process.Start(Sel.Base + "/"); };
             var rename = UI.Btn("Rename"); rename.Click += (s, e) => RenameClock();
             var forget = UI.Btn("Remove from list"); forget.Click += (s, e) => ForgetClock();
             btns.Controls.AddRange(new Control[] { refresh, web, rename, forget });
@@ -2460,6 +2601,12 @@ namespace FermFrame
 
         void LoadWifi()
         {
+            if (Demo.On)   // never show this PC's real Wi-Fi in demo mode
+            {
+                ssidBox.Items.AddRange(new object[] { "MyHomeWiFi", "MyHomeWiFi-5G" });
+                ssidBox.Text = "MyHomeWiFi"; passBox.Text = "demo-password";
+                return;
+            }
             ThreadPool.QueueUserWorkItem(_ =>
             {
                 var i = Wlan.GetIface();
@@ -2499,13 +2646,36 @@ namespace FermFrame
             go.Enabled = false; go.Text = "Working... please wait";
             worker = new Thread(() =>
             {
-                try { Run(); }
+                try { if (Demo.On) DemoRun(); else Run(); }
                 catch (ThreadAbortException) { }
                 catch (Exception ex) { Log(ex.Message, "bad"); }
                 finally { try { BeginInvoke(new Action(() => { go.Enabled = true; go.Text = "Set up my FermFrame"; })); } catch { } }
             });
             worker.IsBackground = true;
             worker.Start();
+        }
+
+        // Demo mode: the messages a real setup shows, without touching Wi-Fi or any device
+        void DemoRun()
+        {
+            var steps = new[]
+            {
+                new[] { "Looking for your clock...", "step", "2500" },
+                new[] { "Found a brand-new clock ('Smart weather clock'). This PC will leave your Wi-Fi for a minute or two - that's normal.", "step", "2500" },
+                new[] { "ID: A4:CF:12:3B:9E:04", "", "1000" },
+                new[] { "Installing FermFrame... (about 30 seconds - keep the clock plugged in!)", "", "3000" },
+                new[] { "Installed. The FermFrame is restarting.", "good", "2000" },
+                new[] { "Waiting for FermFrame to start...", "", "2000" },
+                new[] { "Installing the full FermFrame " + Bundled.Version + "...", "", "3000" },
+                new[] { "The FermFrame is restarting...", "", "2000" },
+                new[] { "Saving your Wi-Fi and account details on the FermFrame...", "", "1500" },
+                new[] { "Saved. The FermFrame joins your Wi-Fi and shows your brew.", "good", "1500" },
+                new[] { "Putting this PC back on your Wi-Fi...", "", "1500" },
+                new[] { "Checking the FermFrame on your home network...", "step", "2000" },
+                new[] { "The FermFrame is on your Wi-Fi at 192.168.0.24", "good", "1500" },
+                new[] { "All done! Your graph is on the FermFrame.", "good", "0" },
+            };
+            foreach (var s in steps) { Log(s[0], s[1]); Thread.Sleep(int.Parse(s[2])); }
         }
 
         // ---- Wi-Fi switching

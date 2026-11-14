@@ -1,0 +1,124 @@
+1
+00:00:00,500 --> 00:00:01,895
+This is FermFrame.
+
+2
+00:00:01,895 --> 00:00:11,349
+It turns a cheap desktop clock into a little screen that shows your fermentation, straight from Brewfather or a RAPT Pill.
+
+3
+00:00:11,349 --> 00:00:13,596
+Let's take a look at the app.
+
+4
+00:00:15,467 --> 00:00:19,660
+Download FermFrame from its GitHub page and open it.
+
+5
+00:00:19,660 --> 00:00:20,789
+Click Install.
+
+6
+00:00:20,789 --> 00:00:27,402
+It installs just for you, with no admin rights, and adds itself to the Start menu.
+
+7
+00:00:28,900 --> 00:00:30,590
+This is the main window.
+
+8
+00:00:30,590 --> 00:00:32,844
+On the left are your FermFrames.
+
+9
+00:00:32,844 --> 00:00:37,491
+A green dot means it's working, and grey means it isn't answering.
+
+10
+00:00:39,233 --> 00:00:48,939
+For the one you've selected, you see the brew, its gravity, the temperature, the alcohol so far, and how many days it's been fermenting.
+
+11
+00:00:50,600 --> 00:00:54,384
+Underneath is the whole fermentation as a graph.
+
+12
+00:00:54,384 --> 00:00:57,380
+Gravity in amber, temperature in blue.
+
+13
+00:00:58,867 --> 00:01:01,435
+Click another FermFrame to see its brew.
+
+14
+00:01:01,435 --> 00:01:07,087
+When the gravity hasn't moved for three days, it lets you know it might be ready to keg.
+
+15
+00:01:08,700 --> 00:01:11,301
+Give each one a name that makes sense to you.
+
+16
+00:01:15,967 --> 00:01:19,713
+The Settings tab changes everything about the screen.
+
+17
+00:01:19,713 --> 00:01:25,580
+Pick a theme or your own colours, a font, the brightness, and when to dim at night.
+
+18
+00:01:30,933 --> 00:01:36,814
+Choose the graph style and time range, and which pages it takes turns showing.
+
+19
+00:01:36,814 --> 00:01:43,147
+The graph, a big number you can read across the room, the time, or your other brews.
+
+20
+00:01:44,867 --> 00:01:47,547
+Nothing changes until you press Save.
+
+21
+00:01:47,547 --> 00:01:50,300
+Then the screen updates straight away.
+
+22
+00:01:52,100 --> 00:01:55,317
+The Firmware tab keeps everything up to date.
+
+23
+00:01:55,317 --> 00:01:59,391
+One click, about a minute, and it keeps all its settings.
+
+24
+00:02:12,233 --> 00:02:13,302
+Want another one?
+
+25
+00:02:13,302 --> 00:02:17,388
+This shows exactly which clock to buy, and which ones won't work.
+
+26
+00:02:20,500 --> 00:02:26,389
+When it arrives, plug it into power and click Set up a new FermFrame.
+
+27
+00:02:26,389 --> 00:02:32,193
+Check your Wi-Fi, add your Brewfather details, and press the button.
+
+28
+00:02:32,193 --> 00:02:36,290
+A few minutes later, your brew is on the screen.
+
+29
+00:02:38,033 --> 00:02:39,482
+That's FermFrame.
+
+30
+00:02:39,482 --> 00:02:44,596
+It's free and open source, and the full manual is on GitHub.
+
+31
+00:02:44,596 --> 00:02:45,789
+Happy brewing.
+

@@ -13,3 +13,12 @@ backup-*.bin
 # Editors
 .vscode/
 *.user
+
+# Video work files and voice clips
+docs/video/work/
+docs/video/voice/
+
+
+# Private words for the upload check (never published)
+manager/private-words.txt
+

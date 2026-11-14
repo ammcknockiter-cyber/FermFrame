@@ -1,6 +1,8 @@
 # Builds FermFrame.exe (the Windows app) with the C# compiler that comes with Windows.
 # The firmware files from ..\installer\files are built into the .exe.
-#   powershell -ExecutionPolicy Bypass -File build.ps1
+#   powershell -ExecutionPolicy Bypass -File build.ps1            (test build: FermFrame.exe only)
+#   powershell -ExecutionPolicy Bypass -File build.ps1 -Release   (also dist\FermFrame-<version>.exe + checksum)
+param([switch]$Release)
 
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -86,7 +88,12 @@ if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
 Write-Host "Built $exe (app $appVer, FermFrame $ver firmware inside, $([math]::Round((Get-Item $exe).Length / 1KB)) KB)"
 
 # Release file for the download page, plus its SHA-256 so people can check their download
+if (-not $Release) { Write-Host 'Test build only (add -Release to make the release file).'; return }
 $dist = Join-Path $root 'dist'
+$relCheck = Join-Path $dist "FermFrame-$appVer.exe"
+if ((Test-Path $relCheck) -and -not $env:FERMFRAME_OVERWRITE_RELEASE) {
+  throw "dist\FermFrame-$appVer.exe already exists - if $appVer is published, bump AppInfo.Version first (or set FERMFRAME_OVERWRITE_RELEASE=1 if it was never published)."
+}
 New-Item -ItemType Directory -Force $dist | Out-Null
 $rel = Join-Path $dist "FermFrame-$appVer.exe"
 Copy-Item $exe $rel -Force

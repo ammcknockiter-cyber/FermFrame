@@ -12,7 +12,7 @@ No tools needed – everything is done on the GitHub website.
    - `project-url.txt` → `https://github.com/YOUR-NAME/FermFrame`
    - `shops-url.txt` → `https://raw.githubusercontent.com/YOUR-NAME/FermFrame/main/manager/shops.json`
 
-   Then rebuild: `powershell -ExecutionPolicy Bypass -File manager\build.ps1`
+   Then rebuild: `powershell -ExecutionPolicy Bypass -File manager\build.ps1 -Release`
 
 3. **Gather the files:** `powershell -ExecutionPolicy Bypass -File manager\prepare-github.ps1`
    This puts exactly the files to publish in `dist\github-upload` (your RaptHooker backup, build leftovers
@@ -35,7 +35,7 @@ Share the link to the Releases page (`https://github.com/YOUR-NAME/FermFrame/rel
 
 1. Bump the version: `AppInfo.Version` and the three assembly versions at the top of
    `manager\FermFrameApp.cs` (and `FERMFRAME_VERSION` in `platformio.ini` if the firmware changed).
-2. Rebuild, run `prepare-github.ps1`, upload the changed files, and create a new release with the new
+2. Rebuild with `build.ps1 -Release`, run `prepare-github.ps1`, upload the changed files, and create a new release with the new
    `dist\FermFrame-<version>.exe`.
 
 People who already have the app just download the new one and press **Update**.

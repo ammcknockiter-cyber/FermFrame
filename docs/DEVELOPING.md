@@ -76,7 +76,7 @@ powershell -ExecutionPolicy Bypass -File manager\build.ps1
 ```
 
 Uses the C# compiler that ships with Windows (.NET Framework 4.x), so the code must stay **C# 5**
-(no `$"..."`, `?.`, `=>` members). Output: `FermFrame.exe` and `dist/FermFrame-<version>.exe`.
+(no `$"..."`, `?.`, `=>` members). Output: `FermFrame.exe`; with `-Release` also `dist/FermFrame-<version>.exe` and its checksum (refused if that version already exists).
 The app version is `AppInfo.Version` plus the assembly versions at the top of `FermFrameApp.cs`.
 
 Optional one-line files next to `build.ps1`:
@@ -85,4 +85,4 @@ Optional one-line files next to `build.ps1`:
 - `shops-url.txt` – a raw https link to `shops.json`, so the shop list can change without a new app
 
 Testing tip: set `FERMFRAME_SCALE=1.5` to make the app draw as it would on a 150% display.
-Run with `/portable` to skip the install window.
+Run with `/portable` to skip the install window, or `/demo` for made-up FermFrames (used for the manual and video: nothing real is contacted or saved).

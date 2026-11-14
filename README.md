@@ -7,6 +7,8 @@ display that shows your brew's gravity, temperature, ABV and a graph, straight f
 The free Windows app sets up new displays, shows all of them in one place, changes their settings and keeps
 their firmware up to date.
 
+**[Read the full manual](docs/MANUAL.md)** · **[Watch the 3-minute video guide](https://github.com/ammcknockiter-cyber/FermFrame/releases/latest)**
+
 ## What you need
 
 - A **"Smart Weather Desktop Clock"** – the small cube with a square colour screen, also sold as
