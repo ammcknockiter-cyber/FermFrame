@@ -998,3 +998,7 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
+
+Thanks
+------
+- RaptHooker (GPL-3.0, https://github.com/roguecode/RaptHooker): first showed that these GeekMagic clocks can run custom firmware installed from their stock update page, and worked out how their screen is wired. FermFrame uses that knowledge but shares no code with RaptHooker.
