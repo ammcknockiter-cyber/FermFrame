@@ -71,7 +71,7 @@ struct Config {
   // Wi-Fi + account
   char ssid[33]   = "";
   char pass[65]   = "";
-  char source[12] = "brewfather"; // "brewfather" or "rapt"
+  char source[12] = "brewfather"; // "brewfather", "rapt" or "local" (own hydrometer sends to us)
   char user[72]   = "";
   char secret[112]= "";
   char device[40] = "";       // optional: part of the batch / pill name to show
@@ -115,9 +115,10 @@ static const char* ADMIN_USER  = "fermframe";   // user name for the settings pa
 static const char* BOOTS_FILE  = "/boots";      // counts quick plug-ins (forgotten password)
 static const unsigned long SETUP_RETRY_MS = 3UL * 60UL * 1000UL;  // power-cut retry
 
-bool isBrewfather() { return cfg.source[0] != 'r' && cfg.source[0] != 'R'; }
+bool isLocal()      { return cfg.source[0] == 'l' || cfg.source[0] == 'L'; }   // "local": an iSpindel/GravityMon sends to us
+bool isBrewfather() { return !isLocal() && cfg.source[0] != 'r' && cfg.source[0] != 'R'; }
 bool isFahrenheit() { return cfg.unit[0] == 'F' || cfg.unit[0] == 'f'; }
-bool hasAccount()   { return cfg.user[0] && cfg.secret[0]; }
+bool hasAccount()   { return isLocal() || (cfg.user[0] && cfg.secret[0]); }   // local needs no account
 
 static void copyStr(JsonDocument& d, const char* key, char* dst, size_t n, const char* def) {
   strlcpy(dst, d[key] | def, n);
@@ -450,6 +451,143 @@ void decideReady() {
               (long)(winEnd - cur.lastT) < 12L * 3600 &&
               fabsf(cur.sg - cur.sg72) <= 0.0011f &&
               (isnan(cur.og) || cur.og - cur.sg >= 0.010f);
+}
+
+// ---- Own hydrometer (iSpindel, GravityMon, ...): readings are sent to us and kept here ----
+// Each reading is 10 bytes in /hist.bin, oldest first. At one reading every 15 minutes, HIST_MAX
+// is about 6 weeks; when it's full the oldest quarter is dropped. "Start a new brew" (or a hydrometer
+// that's suddenly much heavier - it went into new wort) starts the file again.
+
+static const char* HIST_FILE = "/hist.bin";
+static const char* HNAME_FILE = "/hist.name";   // the hydrometer's own name, as it sends it
+static const int HIST_MAX = 4000;
+
+struct __attribute__((packed)) Rec { uint32_t t; uint16_t sg; int16_t temp; uint8_t bat; uint8_t spare; };   // sg*10000, °C*100, % (255 = none)
+
+String hydroName;              // name the hydrometer sends (e.g. "iSpindel001")
+unsigned long lastHydroAt = 0; // millis() of the last reading received (0 = none since start)
+
+void loadHydroName() {
+  File f = LittleFS.open(HNAME_FILE, "r");
+  hydroName = f ? f.readString() : String(); if (f) f.close();
+}
+
+bool lastRec(Rec& r) {
+  File f = LittleFS.open(HIST_FILE, "r");
+  if (!f) return false;
+  bool ok = f.size() >= sizeof(Rec) && f.seek(f.size() - sizeof(Rec)) && f.read((uint8_t*)&r, sizeof(Rec)) == sizeof(Rec);
+  f.close();
+  return ok;
+}
+
+void newBrew() { LittleFS.remove(HIST_FILE); }
+
+// Keeps the newest 3/4 when the file is full
+void trimHistory() {
+  File f = LittleFS.open(HIST_FILE, "r");
+  if (!f) return;
+  size_t n = f.size() / sizeof(Rec);
+  if (n < (size_t)HIST_MAX) { f.close(); return; }
+  size_t skip = n - HIST_MAX * 3 / 4;
+  File o = LittleFS.open("/hist.tmp", "w");
+  f.seek(skip * sizeof(Rec));
+  uint8_t buf[sizeof(Rec) * 32];
+  while (f.available()) { size_t got = f.read(buf, sizeof(buf)); o.write(buf, got); yield(); }
+  f.close(); o.close();
+  LittleFS.remove(HIST_FILE); LittleFS.rename("/hist.tmp", HIST_FILE);
+}
+
+void storeReading(time_t t, float sg, float tempC, int battery) {
+  Rec last;
+  // Much heavier than the last reading after a break: the hydrometer went into a new brew
+  if (!isnan(sg) && lastRec(last) && last.sg && sg - last.sg / 10000.0f > 0.020f && t - (time_t)last.t > 3600) newBrew();
+  Rec r;
+  r.t = (uint32_t)t;
+  r.sg = isnan(sg) ? 0 : (uint16_t)lroundf(sg * 10000);
+  r.temp = isnan(tempC) ? INT16_MIN : (int16_t)lroundf(tempC * 100);
+  r.bat = battery < 0 ? 255 : (uint8_t)constrain(battery, 0, 100);
+  r.spare = 0;
+  File f = LittleFS.open(HIST_FILE, "a");
+  if (f) { f.write((const uint8_t*)&r, sizeof(r)); f.close(); }
+  trimHistory();
+}
+
+// Builds the graph and numbers from the stored readings (like brewfatherFetch does from the cloud)
+bool localLoad() {
+  File f = LittleFS.open(HIST_FILE, "r");
+  Rec r;
+  time_t first = 0;
+  if (f && f.read((uint8_t*)&r, sizeof(r)) == sizeof(r)) first = r.t;
+  time_t now = time(nullptr);
+  time_t start = rangeStart();
+  if (cfg.rangeH == 0 && first > 1500000000 && first < now - 3600) start = first;
+  resetData(start);
+  String name = cfg.device[0] ? String(cfg.device) : hydroName.length() ? hydroName : String("My hydrometer");
+  strlcpy(cur.name, name.c_str(), sizeof(cur.name));
+  if (first > 1500000000) cur.batchStart = first;
+  if (!f) { setProblem("Waiting for your hydrometer", "Send its readings to " + WiFi.localIP().toString() + "/ispindel - scan for help."); return false; }
+  f.seek(0);
+  int battery = -1;
+  while (f.read((uint8_t*)&r, sizeof(r)) == sizeof(r)) {
+    addReading((time_t)r.t, r.sg ? r.sg / 10000.0f : NAN, r.temp == INT16_MIN ? NAN : r.temp / 100.0f);
+    if (r.bat != 255) battery = r.bat;
+    if ((cur.count & 63) == 0) yield();
+  }
+  f.close();
+  if (battery >= 0) cur.battery = battery;
+  if (!cur.count) { setProblem("Waiting for your hydrometer", "Send its readings to " + WiFi.localIP().toString() + "/ispindel - scan for help."); return false; }
+  if ((long)(now - cur.lastT) > 6L * 3600)
+    setProblem("No reading for " + String((now - cur.lastT) / 3600) + " hours", "Check your hydrometer's battery and Wi-Fi.");
+  return true;
+}
+
+// Plato (or Brix) to specific gravity
+static float platoToSg(float p) { return 1.0f + p / (258.6f - (p / 258.2f) * 227.1f); }
+
+// POST /ispindel - the iSpindel "HTTP" service and GravityMon "HTTP POST" both send this JSON:
+// {"name":"iSpindel001","ID":123,"angle":45.1,"temperature":19.8,"temp_units":"C","battery":4.05,"gravity":1.046,...}
+void handleIspindel() {
+  if (server.method() == HTTP_GET) {   // so people can check the address in a browser
+    server.send(200, "text/plain", F("FermFrame is ready for your hydrometer. Set its HTTP service to send here (POST)."));
+    return;
+  }
+  JsonDocument filter;
+  for (const char* k : {"name", "gravity", "temperature", "temp_units", "battery", "gravity-unit", "gravity_unit", "gravity_units", "time"}) filter[k] = true;
+  JsonDocument d;
+  if (deserializeJson(d, server.arg("plain"), DeserializationOption::Filter(filter)) || !d.is<JsonObject>()) { server.send(400, "text/plain", "Not JSON"); return; }
+  String name = d["name"] | "";
+  // Only the hydrometer named in the settings, if one is named
+  if (cfg.device[0] && !containsIgnoreCase(name.c_str(), cfg.device)) { server.send(200, "text/plain", "Ignored (a different hydrometer)"); return; }
+
+  float g = d["gravity"] | NAN;
+  String gu = d["gravity-unit"] | (d["gravity_unit"] | (d["gravity_units"] | ""));
+  gu.toUpperCase();
+  if (!isnan(g) && (gu.startsWith("P") || gu.startsWith("B") || (gu == "" && g > 1.5f))) g = platoToSg(g);
+  if (!isnan(g) && (g < 0.98f || g > 1.16f)) g = NAN;   // out of the liquid / not calibrated
+
+  float t = d["temperature"] | NAN;
+  String tu = d["temp_units"] | "C"; tu.toUpperCase();
+  if (!isnan(t)) { if (tu.startsWith("F")) t = (t - 32) * 5.0f / 9.0f; else if (tu.startsWith("K")) t -= 273.15f; }
+
+  int battery = -1;
+  float b = d["battery"] | NAN;
+  if (!isnan(b)) battery = b > 5.0f ? (int)lroundf(b) : (int)lroundf((b - 3.4f) / (4.15f - 3.4f) * 100);   // volts, or already %
+
+  time_t now = time(nullptr);
+  if (now < 1700000000) { server.send(503, "text/plain", "FermFrame doesn't know the time yet"); return; }
+  time_t when = now;
+  long sent = d["time"] | 0L;   // optional: a reading from earlier (for importing / the test simulator)
+  if (sent > now - 60L * 86400 && sent <= now + 60) when = sent;
+
+  if (isnan(g) && isnan(t)) { server.send(400, "text/plain", "No gravity or temperature"); return; }
+  storeReading(when, g, t, battery);
+  if (name.length() && name != hydroName) {
+    hydroName = name;
+    File f = LittleFS.open(HNAME_FILE, "w"); if (f) { f.print(name); f.close(); }
+  }
+  lastHydroAt = millis();
+  if (isLocal()) needRefresh = true;
+  server.send(200, "application/json", "{\"ok\":true}");
 }
 
 int httpsRequest(BearSSL::WiFiClientSecure& client, HTTPClient& http, const String& url,
@@ -1029,7 +1167,7 @@ light:['#ffffff','#111111','#c77700','#1f6fd1','#dddddd','#777777'],retro:['#000
 contrast:['#000000','#ffffff','#ffff00','#00ffff','#555555','#cccccc']};
 function g(i){return document.getElementById(i)}
 function v(n){var e=document.querySelector('[name='+n+']:checked')||document.getElementsByName(n)[0];return e?e.value:''}
-function s(){var b=g('bf').checked;g('l1').textContent=b?'Brewfather user ID':'RAPT email';g('l2').textContent=b?'Brewfather API key':'RAPT API secret';
+function s(){var b=g('bf').checked,l=g('lo')&&g('lo').checked;g('acct').style.display=l?'none':'';g('loc').style.display=l?'':'none';if(l){g('h').innerHTML='';return}g('l1').textContent=b?'Brewfather user ID':'RAPT email';g('l2').textContent=b?'Brewfather API key':'RAPT API secret';
 g('h').innerHTML=b?'In Brewfather: Settings &rarr; API &rarr; Generate API key (tick <b>Read batches</b>). Copy the User ID and the key. One key works for all your clocks.':'On the RAPT website: My account &rarr; API Secrets &rarr; Create. Use your RAPT email, not your password.'}
 function th(){var t=T[g('theme').value];if(t)K.forEach(function(k,i){g(k).value=t[i]});P()}
 function cu(){g('theme').value='custom';P()}
@@ -1110,11 +1248,29 @@ void handleRoot() {
   c.add(F("<h2>2. Where are your readings?</h2><div class=r><label><input type=radio name=source value=brewfather id=bf onchange=s()"));
   if (bf) c.add(" checked");
   c.add(F("> Brewfather</label><label><input type=radio name=source value=rapt onchange=s()"));
-  if (!bf) c.add(" checked");
-  c.add(F("> RAPT Pill</label></div><small id=h></small><label id=l1>ID</label><input name=user autocomplete=off autocapitalize=off value=\""));
+  if (!bf && !isLocal()) c.add(" checked");
+  c.add(F("> RAPT Pill</label>"));
+#ifndef FERMFRAME_LITE
+  c.add(F("<label><input type=radio name=source value=local id=lo onchange=s()"));
+  if (isLocal()) c.add(" checked");
+  c.add(F("> My own hydrometer</label>"));
+#endif
+  c.add(F("</div><small id=h></small><div id=acct><label id=l1>ID</label><input name=user autocomplete=off autocapitalize=off value=\""));
   c.add(html(cfg.user));
   c.add(F("\"><label id=l2>Key</label><input name=secret type=password autocomplete=off placeholder=\""));
-  c.add(cfg.secret[0] ? "(saved - leave blank to keep)" : "paste it here"); c.add("\">");
+  c.add(cfg.secret[0] ? "(saved - leave blank to keep)" : "paste it here"); c.add("\"></div>");
+#ifndef FERMFRAME_LITE
+  c.add(F("<div id=loc style=display:none><small>For an <b>iSpindel</b> or <b>GravityMon</b> (free, no account): in its settings choose the "
+          "<b>HTTP</b> service (GravityMon: <b>HTTP POST</b>) and send to<br><b>Server:</b> "));
+  c.add(WiFi.localIP().toString());
+  c.add(F(" &nbsp; <b>Port:</b> 80 &nbsp; <b>Path:</b> /ispindel<br>(GravityMon wants it as one address: <b>http://"));
+  c.add(WiFi.localIP().toString());
+  c.add(F("/ispindel</b>)<br>Last reading from: <b>"));
+  c.add(hydroName.length() ? html(hydroName.c_str()) : String(F("nothing yet")));
+  c.add(F("</b></small><div class=k>"));
+  addCheck(c, "newBrew", F("Start a new brew (clears this FermFrame's graph)"), false);
+  c.add(F("</div></div>"));
+#endif
 
 #ifndef FERMFRAME_LITE
   // ---- Look & feel ----
@@ -1228,7 +1384,7 @@ void handleSave() {
   copyArg("ssid", cfg.ssid, sizeof(cfg.ssid), false);
   if (server.hasArg("pass") && server.arg("pass").length()) strlcpy(cfg.pass, server.arg("pass").c_str(), sizeof(cfg.pass));
   String src = server.arg("source"); src.toLowerCase();
-  if (src.length()) strlcpy(cfg.source, src.startsWith("r") ? "rapt" : "brewfather", sizeof(cfg.source));
+  if (src.length()) strlcpy(cfg.source, src.startsWith("r") ? "rapt" : src.startsWith("l") ? "local" : "brewfather", sizeof(cfg.source));
   copyArg("user", cfg.user, sizeof(cfg.user), false);
   copyArg("secret", cfg.secret, sizeof(cfg.secret), true);
   copyArg("device", cfg.device, sizeof(cfg.device), false);
@@ -1256,6 +1412,7 @@ void handleSave() {
     cfg.pageSecs = argInt("pageSecs", cfg.pageSecs, 3, 600);
     cfg.keg = server.hasArg("keg");
   }
+  if (server.hasArg("newBrew")) newBrew();   // own hydrometer: start the graph again
   if (server.hasArg("adminOff")) cfg.admin[0] = 0;
   else copyArg("admin", cfg.admin, sizeof(cfg.admin), true);
   saveConfig();
@@ -1304,6 +1461,12 @@ void handleInfo() {
   j += html(cfg.ssid);
   j += F("\",\"account\":");
   j += hasAccount() ? F("true") : F("false");
+  j += F(",\"source\":\"");
+  j += cfg.source;
+  j += F("\",\"hydrometer\":\"");   // what an iSpindel/GravityMon calls itself, and when it last sent (seconds ago, -1 = not since start)
+  j += html(hydroName.c_str());
+  j += F("\",\"hydroAgo\":");
+  j += lastHydroAt ? (long)((millis() - lastHydroAt) / 1000) : -1L;
   j += F(",\"locked\":");    // a settings password is set (never the password itself)
   j += (cfg.admin[0] && !setupMode) ? F("true") : F("false");
   j += F(",\"problem\":\"");
@@ -1366,6 +1529,9 @@ void startWebServer() {
   server.on("/fermframe.json", HTTP_GET, handleInfo);
   server.on("/brewscreen.json", HTTP_GET, handleInfo);   // name before FermFrame
   server.on("/graph.json", HTTP_GET, handleGraph);
+#ifndef FERMFRAME_LITE
+  server.on("/ispindel", handleIspindel);   // own hydrometer (iSpindel / GravityMon) - no password: they can't send one
+#endif
 #ifdef FERMFRAME_TEST
   server.on("/test-setup", HTTP_POST, []() {
     File f = LittleFS.open("/test-setup", "w"); if (f) { f.print(1); f.close(); }
@@ -1433,6 +1599,7 @@ void setup() {
   if (!LittleFS.begin()) { LittleFS.format(); LittleFS.begin(); }
   loadConfig();
   if (strlen(cfg.apPass) < 8) { makeApPass(); saveConfig(); }
+  loadHydroName();
   int plugIns = plugInsAtBoot = countPlugIns();
 #ifdef FERMFRAME_TEST   // test builds only (never published): /test-setup restarts into setup mode
   if (LittleFS.exists("/test-setup")) { LittleFS.remove("/test-setup"); plugIns = 3; }
@@ -1515,7 +1682,7 @@ void loop() {
       lastFetch = now - (unsigned long)cfg.refreshMin * 60000UL + 60000UL;
       return;
     }
-    if (firstTime) drawMessage("FermFrame", isBrewfather() ? "Asking Brewfather..." : "Asking RAPT...");
+    if (firstTime) drawMessage("FermFrame", isLocal() ? "Reading your hydrometer..." : isBrewfather() ? "Asking Brewfather..." : "Asking RAPT...");
 
     // keep the last good data in case this fetch fails
     static Summary keep; keep = cur;
@@ -1526,11 +1693,12 @@ void loop() {
     memcpy(kOthers, others, sizeof(kOthers)); kN = nOthers; kWs = winStart; kWe = winEnd;
 
     setProblem("", "");
-    bool ok = WiFi.status() == WL_CONNECTED && (isBrewfather() ? brewfatherFetch() : raptFetch());
+    bool ok = isLocal() ? localLoad()
+            : WiFi.status() == WL_CONNECTED && (isBrewfather() ? brewfatherFetch() : raptFetch());
     if (ok) decideReady();
     else {
       if (WiFi.status() != WL_CONNECTED) setProblem("Wi-Fi dropped - reconnecting", "Check your router. Trying again in a minute.");
-      if (keep.lastT) {
+      if (keep.lastT && !isLocal()) {   // own hydrometer: nothing to fall back to (e.g. after Start a new brew)
         cur = keep;
         memcpy(sumSg, kSg, sizeof(kSg)); memcpy(sumT, kT, sizeof(kT));
         memcpy(nSg, knSg, sizeof(knSg)); memcpy(nT, knT, sizeof(knT));
@@ -1538,7 +1706,7 @@ void loop() {
       }
       lastFetch = now - (unsigned long)cfg.refreshMin * 60000UL + 60000UL;   // retry in 1 min
     }
-    if (ok || keep.lastT) drawCurrentPage(); else drawProblem();
+    if (ok || (keep.lastT && !isLocal())) drawCurrentPage(); else drawProblem();
     lastMinute = now;
     pageSince = now;
     return;

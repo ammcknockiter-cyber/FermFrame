@@ -9,6 +9,8 @@ recognises BrewScreen devices.
 |---|---|
 | `src/main.cpp`, `platformio.ini` | The firmware (PlatformIO, Arduino core for ESP8266) |
 | `installer/files/fermframe.bin`, `fermframe-lite.bin` | The built firmware the app embeds |
+| `docs/tools/ispindel-simulator.ps1` | Pretends to be an iSpindel/GravityMon (`-FermFrame <ip>`, `-Plato`, `-Fahrenheit`, `-Live`) to test "My own hydrometer" without one |
+| `[env:geekmagic_test]` in `platformio.ini` | **Test only, never publish:** shows the setup hotspot password in `/fermframe.json` and adds `/test-setup`, so setup mode can be tested remotely |
 | `manager/` | The Windows app (`FermFrameApp.cs`), its build script and the shop list |
 | `installer/` (the `.bat` / `.ps1`) | The original PowerShell installer, replaced by the app; kept for reference. It only joins an open setup Wi-Fi, so it can't finish setting up firmware 2.3+ (whose *FermFrame-Setup* has a password) – use the app. |
 | `dist/` | Release files made by the build (not committed) |

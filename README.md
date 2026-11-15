@@ -1,8 +1,9 @@
 # FermFrame
 
 **See your fermentation at a glance.** FermFrame turns a cheap desktop "smart weather clock" into a small
-display that shows your brew's gravity, temperature, ABV and a graph, straight from **Brewfather** or a
-**RAPT Pill**. It runs on its own over Wi-Fi: no PC, hub or app needs to stay on.
+display that shows your brew's gravity, temperature, ABV and a graph, straight from **Brewfather**, a
+**RAPT Pill**, or – free, with no account – your own **iSpindel** or **GravityMon**. It runs on its own over Wi-Fi:
+no PC, hub or app needs to stay on.
 
 The free Windows app sets up new displays, shows all of them in one place, changes their settings and keeps
 their firmware up to date.
@@ -17,10 +18,13 @@ their firmware up to date.
   **Not** the SmallTV **Pro** or other ESP32 versions – they use a different chip.
 - A **Windows 10 or 11** PC with Wi-Fi (only for setup; a laptop is ideal).
 - **2.4 GHz Wi-Fi** at home (most routers have it).
-- A **Brewfather Premium** account with an API key (Settings → API → Generate, tick *Read batches*), or a
-  **RAPT** account with an API secret.
+- Somewhere for the readings to come from, one of:
+  - **Your own iSpindel or GravityMon** (app 1.2 / firmware 2.4 and later) – **free, no account, no subscription**: it sends
+    its readings straight to the FermFrame over your Wi-Fi, and the FermFrame keeps about six weeks of them.
+  - A **Brewfather Premium** account with an API key (Settings → API → Generate, tick *Read batches*).
+  - A **RAPT** account with an API secret.
 
-  **Both need a paid plan for the connection FermFrame uses:** Brewfather's API needs **Brewfather Premium** (new accounts get a
+  **Brewfather and RAPT need a paid plan for the connection FermFrame uses:** Brewfather's API needs **Brewfather Premium** (new accounts get a
   30-day free trial), and according to [RAPT's own docs](https://docs.rapt.io/my-account/subscriptions) API access needs **RAPT Premium** (about $15 a year).
 
 ## Install the app

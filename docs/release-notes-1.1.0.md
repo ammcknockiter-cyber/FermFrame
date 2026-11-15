@@ -27,7 +27,7 @@ Then update your FermFrames on the **Firmware** tab (FermFrame 2.3.0 is built in
 
 ### Check your download (optional)
 SHA-256 of `FermFrame-1.1.0.exe`:
-`930f922d5c78e97281ef49506d7e934d29dc842eba248bd0bd3ea80220578e96`
+`SHA256_GOES_HERE`
 
 Firmware: FermFrame 2.3.0. Free and open source (MIT). No warranty – installing firmware on a device is at
 your own risk. Not made by or connected with GeekMagic, Brewfather or KegLand (RAPT).

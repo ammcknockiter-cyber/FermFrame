@@ -30,16 +30,16 @@ using System.Windows.Forms;
 [assembly: AssemblyTitle("FermFrame")]
 [assembly: AssemblyProduct("FermFrame")]
 [assembly: AssemblyDescription("Look after your FermFrames")]
-[assembly: AssemblyVersion("1.1.0.0")]
-[assembly: AssemblyFileVersion("1.1.0.0")]
-[assembly: AssemblyInformationalVersion("1.1.0")]
+[assembly: AssemblyVersion("1.2.0.0")]
+[assembly: AssemblyFileVersion("1.2.0.0")]
+[assembly: AssemblyInformationalVersion("1.2.0")]
 [assembly: AssemblyCopyright("MIT licence - see LICENSE")]
 
 namespace FermFrame
 {
     static class AppInfo
     {
-        public const string Version = "1.1.0";   // keep in step with the assembly versions above
+        public const string Version = "1.2.0";   // keep in step with the assembly versions above
     }
 
     static class Program
@@ -1252,7 +1252,7 @@ namespace FermFrame
     {
         public Dictionary<string, string> V = new Dictionary<string, string>();
         public HashSet<string> On = new HashSet<string>();
-        public bool Full, PassSaved, SecretSaved, HasAdmin, AdminSet;
+        public bool Full, PassSaved, SecretSaved, HasAdmin, AdminSet, HasLocal;   // HasLocal: firmware 2.4+ takes an own hydrometer
 
         public string Get(string k, string def = "") { string v; return V.TryGetValue(k, out v) ? v : def; }
 
@@ -1277,7 +1277,7 @@ namespace FermFrame
                 string val = a.ContainsKey("value") ? a["value"] : "";
                 bool chk = a.ContainsKey("checked");
                 if (type == "checkbox") { if (chk) s.On.Add(name); continue; }
-                if (type == "radio") { if (chk) s.V[name] = val; continue; }
+                if (type == "radio") { if (name == "source" && val == "local") s.HasLocal = true; if (chk) s.V[name] = val; continue; }
                 if (type == "hidden") continue;
                 string ph = a.ContainsKey("placeholder") ? a["placeholder"] : "";
                 if (name == "pass") { s.PassSaved = ph.StartsWith("(saved"); continue; }
@@ -2321,7 +2321,9 @@ namespace FermFrame
         Label setNote, saveStatus, lUser, lKey, lBright, passHint, keyHint, payHint, lAdmin, adminHint;
         TextBox tSsid, tPass, tUser, tKey, tDevice, tAdmin;
         CheckBox kAdminOff;
-        RadioButton rBf, rRapt, rC, rF;
+        RadioButton rBf, rRapt, rLocal, rC, rF;
+        Panel localBox;
+        Label localInfo;
         ComboBox cTheme, cFont, cNLevel, cGraph, cPlot, cRange, cTz;
         Button[] colours;
         Slider trBright;
@@ -2373,14 +2375,23 @@ namespace FermFrame
             head("2. Where are the readings?");
             rBf = UI.Radio("Brewfather");
             rRapt = UI.Radio("RAPT Pill");
+            rLocal = UI.Radio("My own hydrometer");
             var srcBox = new Panel { Location = new Point(X, y), Size = new Size(W, 30) };
-            rBf.Location = new Point(0, 2); rRapt.Location = new Point(160, 2);
-            srcBox.Controls.AddRange(new Control[] { rBf, rRapt }); add(srcBox); y += 36;
+            rBf.Location = new Point(0, 2); rRapt.Location = new Point(160, 2); rLocal.Location = new Point(320, 2);
+            srcBox.Controls.AddRange(new Control[] { rBf, rRapt, rLocal }); add(srcBox); y += 36;
             payHint = UI.Lbl("", 9, false, UI.Amber); payHint.Location = new Point(X, y); add(payHint); y += 26;
             rBf.CheckedChanged += (s, e) => SourceLabels();
+            rLocal.CheckedChanged += (s, e) => SourceLabels();
+            int accountY = y;
             lUser = label("Brewfather user ID"); tUser = UI.Box(); put(tUser, 38);
             lKey = label("Brewfather API key"); tKey = UI.Box(true); put(tKey, 32);
             keyHint = UI.Lbl("Leave blank to keep the saved key.", 9, false, UI.Dim); keyHint.Location = new Point(X, y); add(keyHint); y += 24;
+            // Own hydrometer: what to type into it, in the space the account boxes use
+            localBox = new Panel { Location = new Point(X, accountY), Size = new Size(W, y - accountY), Visible = false };
+            localInfo = UI.Lbl("", 9.5f, false, UI.Text); localInfo.AutoSize = false; localInfo.Location = new Point(0, 0); localInfo.Size = new Size(W, y - accountY - 44);
+            var nb = UI.Btn("Start a new brew"); nb.Location = new Point(0, y - accountY - 40);
+            nb.Click += (s, e) => NewBrew();
+            localBox.Controls.AddRange(new Control[] { localInfo, nb }); add(localBox); localBox.BringToFront();
 
             head("3. Look & feel"); lookControls.Add(cur);
             label("Theme"); cTheme = UI.Combo(); put(cTheme, 40);
@@ -2552,10 +2563,46 @@ namespace FermFrame
 
         void SourceLabels()
         {
-            bool bf = rBf.Checked;
+            bool bf = rBf.Checked, local = rLocal.Checked;
             lUser.Text = bf ? "Brewfather user ID" : "RAPT email";
             lKey.Text = bf ? "Brewfather API key  (Brewfather: Settings > API > Generate, tick Read batches)" : "RAPT API secret  (RAPT website: My account > API Secrets)";
-            payHint.Text = bf ? "Needs a Brewfather Premium account (30-day free trial)." : "Needs RAPT Premium (about $15 a year).";
+            payHint.Text = local ? "Free - no account or subscription. Your iSpindel or GravityMon sends its readings straight to the FermFrame."
+                : bf ? "Needs a Brewfather Premium account (30-day free trial)." : "Needs RAPT Premium (about $15 a year).";
+            payHint.ForeColor = local ? UI.Good : UI.Amber;
+            localBox.Visible = local;
+            if (local) localInfo.Text = LocalText(Sel);
+        }
+
+        // What to type into an iSpindel / GravityMon, and what the FermFrame last heard from it
+        static string LocalText(Clock c)
+        {
+            var ip = c == null ? "the FermFrame's address" : c.Ip;
+            var name = c == null ? "" : UI.Str(c.Info, "hydrometer");
+            var ago = c == null ? null : UI.Num(c.Info != null && c.Info.ContainsKey("hydroAgo") ? c.Info["hydroAgo"] : null);
+            var heard = name == "" ? "Nothing received yet."
+                : "Last reading from " + name + (ago.HasValue && ago.Value >= 0 ? ", " + (ago.Value < 120 ? "just now" : (int)(ago.Value / 60) + " minutes ago") : "") + ".";
+            return "In your hydrometer's settings, choose the HTTP service (GravityMon: HTTP POST) and send to:\n" +
+                   "    Server: " + ip + "     Port: 80     Path: /ispindel\n" +
+                   "    (GravityMon wants one address: http://" + ip + "/ispindel)\n" + heard;
+        }
+
+        void NewBrew()
+        {
+            var c = Sel; if (c == null) return;
+            if (MessageBox.Show(this, "Start a new brew on " + c.Name + "?\n\nThis clears the readings it has stored, so the graph starts again from the next reading.",
+                "FermFrame", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                var d = new Dictionary<string, string> { { "newBrew", "1" } };
+                var r = Net.PostForm(c.Base + "/save", d, 20);
+                for (int tries = 0; r.Status == 401 && tries < 3; tries++) { if (!AskPasswordFromWorker(c, c.Lock != "")) break; r = Net.PostForm(c.Base + "/save", d, 20); }
+                BeginInvoke(new Action(() =>
+                {
+                    saveStatus.Text = r.Status == 200 ? "New brew started - the graph begins with the next reading." : "Didn't work (" + (r.Error ?? "code " + r.Status) + ").";
+                    saveStatus.ForeColor = r.Status == 200 ? UI.Good : UI.Bad;
+                    if (r.Status == 200) { c.Graph = null; LoadGraph(c); }
+                }));
+            });
         }
 
         void ResetLook()
@@ -2625,8 +2672,11 @@ namespace FermFrame
             filling = true;
             tSsid.Text = s.Get("ssid"); tPass.Text = "";
             passHint.Text = s.PassSaved ? "Leave blank to keep the saved password." : "";
-            bool bf = s.Get("source", "brewfather") != "rapt";
-            rBf.Checked = bf; rRapt.Checked = !bf; SourceLabels();
+            var src = s.Get("source", "brewfather");
+            rLocal.Visible = s.HasLocal;   // FermFrame 2.4 and later
+            rBf.Checked = src == "brewfather"; rRapt.Checked = src == "rapt"; rLocal.Checked = src == "local" && s.HasLocal;
+            if (!rBf.Checked && !rRapt.Checked && !rLocal.Checked) rBf.Checked = true;
+            SourceLabels();
             tUser.Text = s.Get("user"); tKey.Text = "";
             keyHint.Text = s.SecretSaved ? "Leave blank to keep the saved key." : "";
 
@@ -2681,7 +2731,7 @@ namespace FermFrame
             var d = new Dictionary<string, string>();
             d["ssid"] = tSsid.Text.Trim();
             if (tPass.Text != "") d["pass"] = tPass.Text;
-            d["source"] = rBf.Checked ? "brewfather" : "rapt";
+            d["source"] = rLocal.Checked ? "local" : rBf.Checked ? "brewfather" : "rapt";
             d["user"] = tUser.Text.Trim();
             if (tKey.Text.Trim() != "") d["secret"] = tKey.Text.Trim();
             d["device"] = tDevice.Text.Trim();
@@ -3255,7 +3305,7 @@ namespace FermFrame
         public string AdminPass;   // the settings password the new FermFrame got, if any
         ComboBox ssidBox;
         TextBox passBox, userBox, keyBox, adminBox;
-        RadioButton rbBf, rbRapt;
+        RadioButton rbBf, rbRapt, rbLocal;
         Label l1, l2;
         LinkLabel help;
         Button go;
@@ -3293,8 +3343,9 @@ namespace FermFrame
             put(UI.Lbl("2. Where are your readings?", 11, true, UI.Amber), 30);
             var src = new Panel { Height = 30 };
             rbBf = UI.Radio("Brewfather"); rbBf.Checked = true; rbBf.Location = new Point(2, 2);
-            rbRapt = UI.Radio("RAPT Pill"); rbRapt.Location = new Point(200, 2);
-            src.Controls.AddRange(new Control[] { rbBf, rbRapt }); put(src, 34);
+            rbRapt = UI.Radio("RAPT Pill"); rbRapt.Location = new Point(160, 2);
+            rbLocal = UI.Radio("My own hydrometer"); rbLocal.Location = new Point(320, 2);
+            src.Controls.AddRange(new Control[] { rbBf, rbRapt, rbLocal }); put(src, 34);
             help = new LinkLabel { AutoSize = false, Height = 62, LinkColor = UI.Amber, ActiveLinkColor = UI.Amber, ForeColor = UI.Dim, Font = UI.F(9.5f) };
             put(help, 66);
             l1 = UI.Lbl("Brewfather user ID", 10, false, UI.Dim); put(l1, 24);
@@ -3306,6 +3357,7 @@ namespace FermFrame
             an.AutoSize = false; an.Height = 22; put(an, 26);
             adminBox = UI.Box(true); put(adminBox, 46);
             rbBf.CheckedChanged += (s, e) => Labels();
+            rbLocal.CheckedChanged += (s, e) => Labels();
             help.LinkClicked += (s, e) => { try { Process.Start((string)help.Tag); } catch { } };
             Labels();
 
@@ -3333,7 +3385,14 @@ namespace FermFrame
 
         void Labels()
         {
-            if (rbBf.Checked)
+            bool local = rbLocal.Checked;
+            foreach (Control c in new Control[] { l1, userBox, l2, keyBox }) c.Visible = !local;
+            if (local)
+            {
+                help.Text = "Free - no account or subscription. For an iSpindel or GravityMon: when setup is finished, this window shows exactly what to type into its HTTP settings. Click here for the iSpindel project.";
+                help.Tag = "https://www.ispindel.de/";
+            }
+            else if (rbBf.Checked)
             {
                 l1.Text = "Brewfather user ID"; l2.Text = "Brewfather API key";
                 help.Text = "Needs Brewfather Premium (30-day free trial). Get the ID and key in Brewfather: Settings > API > Generate API key (tick \"Read batches\"). Click here to open Brewfather.";
@@ -3388,12 +3447,12 @@ namespace FermFrame
         void Start()
         {
             logBox.Clear();
-            jSsid = ssidBox.Text.Trim(); jPass = passBox.Text; jSource = rbBf.Checked ? "brewfather" : "rapt";
+            jSsid = ssidBox.Text.Trim(); jPass = passBox.Text; jSource = rbLocal.Checked ? "local" : rbBf.Checked ? "brewfather" : "rapt";
             jUser = userBox.Text.Trim(); jSecret = keyBox.Text.Trim(); jAdmin = adminBox.Text.Trim();
             AdminPass = null; apPass = null;
             if (jSsid == "") { Log("Type your home Wi-Fi name first.", "bad"); return; }
             if (jAdmin.Length > 32) { Log("The settings password can be up to 32 characters.", "bad"); return; }
-            if (jUser == "" || jSecret == "") { Log("Fill in your " + l1.Text + " and " + l2.Text + " first.", "bad"); return; }
+            if (jSource != "local" && (jUser == "" || jSecret == "")) { Log("Fill in your " + l1.Text + " and " + l2.Text + " first.", "bad"); return; }
             go.Enabled = false; go.Text = "Working... please wait";
             worker = new Thread(() =>
             {
@@ -3729,6 +3788,16 @@ namespace FermFrame
                 Log("The FermFrame is on your Wi-Fi at " + home.Ip, "good");
                 var mac = UI.Str(home.Info, "mac"); var ip = home.Ip;
                 BeginInvoke(new Action(() => { if (Done != null) Done(mac, ip); }));
+                if (jSource == "local")
+                {
+                    Log("Now tell your hydrometer where to send its readings:", "step");
+                    Log("In the iSpindel's (or GravityMon's) settings choose the HTTP service (GravityMon: HTTP POST) and enter:");
+                    Log("    Server: " + ip + "     Port: 80     Path: /ispindel");
+                    Log("    GravityMon wants one address: http://" + ip + "/ispindel");
+                    Log("The graph appears with its first reading. The FermFrame's Settings tab shows this again any time.", "good");
+                    Log("Close this window to see the FermFrame in your list.");
+                    return;
+                }
                 Log("Waiting for its first readings...");
                 var info = home.Info;
                 var until3 = DateTime.Now.AddSeconds(60);

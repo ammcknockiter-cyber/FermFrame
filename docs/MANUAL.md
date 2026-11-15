@@ -57,7 +57,7 @@ FermFrame is free and open source. It isn't made by or connected with GeekMagic,
 | **A USB power supply** for the clock | Any phone charger. The clock is never plugged into the PC. |
 | **A Windows 10 or 11 PC with Wi-Fi** | Only needed for setting up and for changing settings. A laptop is ideal. A desktop PC without Wi-Fi can still view and change FermFrames, but can't set up new ones. |
 | **2.4 GHz Wi-Fi at home** | Almost every router has it. The clock can't use 5 GHz-only networks. |
-| **Brewfather Premium** (with an API key) **or RAPT** (with an API secret) | See [section 5](#5-getting-your-brewfather-or-rapt-details). Brewfather's API is a **Premium** feature (30-day free trial for new accounts); on the free plan the key won't work. According to [RAPT's docs](https://docs.rapt.io/my-account/subscriptions), RAPT's API needs **RAPT Premium** (about $15 a year). |
+| **Your own iSpindel or GravityMon** (free) **or Brewfather Premium** (with an API key) **or RAPT** (with an API secret) | See [section 5](#5-getting-your-brewfather-or-rapt-details). An iSpindel or GravityMon needs **no account or subscription** (app 1.2 / FermFrame 2.4 and later). Brewfather's API is a **Premium** feature (30-day free trial for new accounts); on the free plan the key won't work. According to [RAPT's docs](https://docs.rapt.io/my-account/subscriptions), RAPT's API needs **RAPT Premium** (about $15 a year). |
 
 ---
 
@@ -136,6 +136,27 @@ appears within one refresh (5 minutes by default).
 
 1. Sign in on the RAPT website and go to **My account → API Secrets → Create**.
 2. Use your **RAPT email** and the **API secret** – not your RAPT password.
+
+### My own hydrometer (iSpindel or GravityMon) – free
+
+App 1.2 / FermFrame 2.4 and later. No account and no subscription: the hydrometer sends each reading straight to
+the FermFrame over your Wi-Fi, and the FermFrame keeps about **six weeks** of them for the graph.
+
+1. Choose **My own hydrometer** when setting up (or on the Settings tab). The app shows the FermFrame's address.
+2. In your **iSpindel's** configuration page, choose the **HTTP** service and enter
+   **Server:** the FermFrame's address (for example `192.168.1.90`), **Port:** `80`, **Path:** `/ispindel`.
+   For **GravityMon**, choose **HTTP POST** and enter the whole address: `http://192.168.1.90/ispindel`.
+3. Save. The graph starts with the hydrometer's next reading (iSpindels usually send every 15 minutes).
+
+Good to know:
+
+- Gravity in **SG or Plato** and temperature in **°C or °F** are all fine – the FermFrame converts them.
+- **Start a new brew** (Settings tab) clears the graph for your next batch. The FermFrame also starts a new brew by
+  itself when the hydrometer comes back after a break reading much higher – it's gone into new wort.
+- The **name** shown is the hydrometer's own name. To show something else – or to use only one of several
+  hydrometers – type its name in **Settings → More → Batch or pill name**.
+- Readings out of the liquid (for example while cleaning) are ignored.
+- To check the address, open `http://<FermFrame address>/ispindel` in a browser: it says the FermFrame is ready.
 
 ---
 
@@ -479,8 +500,9 @@ viewing and changing them.
 Settings tab. If it's too late, the FermFrame shows **Can't find Wi-Fi** – scan its QR code with your phone and enter
 the new Wi-Fi there, or run **Set up a new FermFrame** again.
 
-**Does it work with iSpindel, Tilt or other hydrometers?** Yes, if they send their readings to **Brewfather** – the
-FermFrame reads Brewfather, not the hydrometer itself.
+**Does it work with iSpindel, Tilt or other hydrometers?** An **iSpindel** or **GravityMon** can send straight to the
+FermFrame, free (see [My own hydrometer](#my-own-hydrometer-ispindel-or-gravitymon--free)). A **Tilt** works if it sends its
+readings to **Brewfather** (for example through a TiltBridge or Tilt Pi); direct Tilt support is planned.
 
 **Can I set FermFrames up from two PCs?** Yes. Each PC keeps its own list and names; use **Find my FermFrames** to add
 existing ones.
