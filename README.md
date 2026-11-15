@@ -59,9 +59,13 @@ the QR code on its screen.
   GitHub whether there's a newer version (you can switch this off in **About**). It doesn't collect or send anything about you.
 - Each FermFrame stores your Wi-Fi password and Brewfather/RAPT key on itself and fetches your readings from
   Brewfather or RAPT every few minutes.
+- Saved passwords and keys are never shown again, by the FermFrame or the app.
+- **Settings password (optional, FermFrame 2.3+):** stops anyone else on your Wi-Fi changing a FermFrame or installing
+  other firmware on it. The setup Wi-Fi has its own password, shown only on the FermFrame's screen.
 - The connection to Brewfather/RAPT is encrypted, but certificates aren't checked (the ESP8266 has too little
-  memory). Anyone on your home network can open a FermFrame's settings page; saved passwords and keys are
-  never shown on it.
+  memory).
+
+**[Is FermFrame safe? – the full security page](docs/SECURITY.md)**
 
 ## Troubleshooting
 

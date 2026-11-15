@@ -82,7 +82,7 @@ if (-not (Test-Path $ico)) {
 $exe = Join-Path $root 'FermFrame.exe'
 & $csc /nologo /nowarn:162 /target:winexe /optimize+ /codepage:65001 "/out:$exe" "/win32icon:$ico" `
   "/resource:$full,fermframe.bin" "/resource:$lite,fermframe-lite.bin" "/resource:$shops,shops.json" "/resource:$license,LICENSE.txt" "/resource:$notices,THIRD-PARTY-NOTICES.txt" `
-  /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Net.Http.dll /r:System.Web.Extensions.dll `
+  /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Net.Http.dll /r:System.Web.Extensions.dll /r:System.Security.dll `
   (Join-Path $here 'FermFrameApp.cs') (Join-Path $obj 'Version.cs')
 if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
 Write-Host "Built $exe (app $appVer, FermFrame $ver firmware inside, $([math]::Round((Get-Item $exe).Length / 1KB)) KB)"

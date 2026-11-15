@@ -153,7 +153,11 @@ of the PC.
    the network the FermFrame will join. It must be 2.4 GHz (the app warns you if it looks like 5 GHz only).
 4. **Where are your readings?** Choose **Brewfather** or **RAPT Pill** and enter the details from
    [section 5](#5-getting-your-brewfather-or-rapt-details). The *Click here* link opens the right website.
-5. Click **Set up my FermFrame** and wait. The box at the bottom tells you what's happening:
+5. **Settings password (optional).** Stops anyone else on your Wi-Fi changing the FermFrame. The app remembers it,
+   so you won't have to type it again on this PC. See [Settings password](#7-settings-password-optional).
+6. Click **Set up my FermFrame** and wait. The box at the bottom tells you what's happening.
+   **When the app asks for the FermFrame's Wi-Fi password,** look at the FermFrame's screen: under the QR code it
+   shows *Password:* and 8 letters and numbers. Type them in. (Each FermFrame makes up its own.)
 
 ![Setup finished](manual/images/setup-done.png)
 
@@ -164,13 +168,14 @@ What happens, in order:
 | Find the clock | *Looking for your clock...* | It looks for the clock's own Wi-Fi, then on your home network. |
 | Connect to it | *Found a brand-new clock...* | **This PC leaves your Wi-Fi for a minute or two.** That's normal. |
 | Install FermFrame | *Installing FermFrame...* (about 30 s) | A small setup version first, because a new clock only accepts small files. |
-| Install the full version | *Installing the full FermFrame 2.2.0...* | |
+| Join the FermFrame's Wi-Fi | *Joining FermFrame-Setup...* | The app asks for the password on the FermFrame's screen (once). |
+| Install the full version | *Installing the full FermFrame 2.3.0...* | |
 | Save your details | *Saving your Wi-Fi and account details...* | The FermFrame restarts and joins your Wi-Fi. |
 | Back to your Wi-Fi | *Putting this PC back on your Wi-Fi...* | |
 | Check | *The FermFrame is on your Wi-Fi at 192.168.x.x* | |
 | First readings | *All done! Your graph is on the FermFrame.* | |
 
-6. Close the window. The new FermFrame is in your list, named **FermFrame 1**, **FermFrame 2** and so on.
+7. Close the window. The new FermFrame is in your list, named **FermFrame 1**, **FermFrame 2** and so on.
    [Rename it](#renaming-and-removing) to something like *Garage fridge*.
 
 **If Windows asks about Location:** Windows only lets apps see nearby Wi-Fi networks when Location is on.
@@ -266,6 +271,10 @@ FermFrame when you open it. Nothing changes until you click **Save to FermFrame*
 - **Save to FermFrame** sends your changes. The FermFrame updates straight away and only **restarts if you changed
   the Wi-Fi**.
 - **Undo my changes** reads the settings from the FermFrame again.
+- **Preview** (on the right, app 1.1 and later) shows what the FermFrame's screen will look like, using its latest
+  readings. It changes as soon as you change the look, colours, font, brightness, graph, pages or °C/°F, before you save.
+  Click **Graph**, **Big number**, **Clock** or **Other brew** to see each page (*Other brew* uses a made-up brew).
+  The fonts are close look-alikes of the FermFrame's, so letters can differ slightly.
 
 ![Settings: Wi-Fi and readings](manual/images/settings-1.png)
 
@@ -338,6 +347,20 @@ Tick more than one page and the FermFrame takes turns showing them.
 | **Time zone** | For the clock page and night dimming |
 | **Check for new readings every** | 1 minute to 2 hours (5 minutes is plenty – hydrometers usually report every 15 minutes) |
 
+### 7. Settings password (optional)
+
+FermFrame 2.3 and later. With a password, nobody else on your Wi-Fi can open the FermFrame's settings page, change its
+settings or install other firmware on it. Readings keep showing as normal.
+
+- **To set one,** type it under **Password** (up to 32 characters) and click **Save to FermFrame**. The app remembers it,
+  encrypted, for your Windows account on this PC.
+- **To change it,** type the new one. **To remove it,** tick **Remove the password**.
+- On **another PC** (or after reinstalling Windows) the app asks for the password once, the first time it needs it.
+- In a **browser**, the FermFrame asks for a user name and password: the user name is `fermframe`.
+- **Forgot it?** Plug the FermFrame in **3 times in a row**, unplugging it each time within 10 seconds. It shows
+  **Setup mode**: scan the QR code (or join the Wi-Fi with the password on its screen) and the settings page opens
+  without the password, so you can change or remove it. If nobody joins within 3 minutes it goes back to normal.
+
 When you save, the status next to the buttons says what happened:
 
 ![Saved](manual/images/settings-saved.png)
@@ -379,8 +402,9 @@ The pages you picked in [Settings → Pages](#5-pages), in your theme.
 
 | Screen | Meaning | What to do |
 |---|---|---|
-| **Set me up!** + QR code | No Wi-Fi saved yet | Use **Set up a new FermFrame** in the app, or scan the QR code with your phone: it joins the FermFrame's own Wi-Fi (*FermFrame-Setup*) and the setup page opens. |
+| **Set me up!** + QR code | No Wi-Fi saved yet | Use **Set up a new FermFrame** in the app, or scan the QR code with your phone: it joins the FermFrame's own Wi-Fi (*FermFrame-Setup*) and the setup page opens. The Wi-Fi password is under the QR code. |
 | **Can't find Wi-Fi** + QR code | Its saved Wi-Fi isn't there (router off, power cut, wrong name or password) | Wait – after a power cut it keeps retrying (it restarts every 3 minutes until the router is back). If the Wi-Fi name or password changed, scan the QR code with your phone and fix them. |
+| **Setup mode** + QR code | You plugged it in 3 times in a row | Scan the QR code to change any setting without the settings password. It goes back to normal after 3 minutes if nobody joins. |
 | **Almost there!** + QR code | On Wi-Fi, but no Brewfather/RAPT details | Add them in the app's Settings tab, or scan the QR code. |
 | **Connecting to Wi-Fi**, **Getting the time...**, **Asking Brewfather...** | Starting up | Wait a few seconds. |
 | A problem in red | Something's wrong – see below | |
@@ -412,7 +436,8 @@ Every FermFrame also has its own settings page, so you can change it from a phon
 - scan the QR code on its screen when it shows one.
 
 The page has the same settings as the app's Settings tab, with a live preview of the screen. Saved passwords and
-keys are never shown on it.
+keys are never shown on it. If the FermFrame has a [settings password](#7-settings-password-optional), the browser asks for
+it: the user name is `fermframe`.
 
 > If you have only one FermFrame you can also use **http://fermframe.local**. With several, that name may open any
 > of them, so use the address instead.
@@ -434,6 +459,8 @@ keys are never shown on it.
 | **Numbers don't update** | Readings come from Brewfather/RAPT, so check your hydrometer is sending readings there. FermFrame asks every 5 minutes by default. |
 | **The app says it can't read the settings** | The FermFrame may be busy restarting – wait a minute and click **Undo my changes** to try again. |
 | **"Windows protected your PC" when opening the download** | Click **More info → Run anyway** (the app isn't signed by a company). |
+| **The app asks for the FermFrame's Wi-Fi password during setup** | It's on the FermFrame's screen, under the QR code (8 letters and numbers). |
+| **Forgot the settings password** | Plug the FermFrame in 3 times in a row (unplug each time within 10 seconds), then scan the QR code – see [Settings password](#7-settings-password-optional). |
 | **Firmware update says "didn't come back yet"** | Wait a minute. If it still doesn't answer, unplug it and plug it back in – it keeps its settings. |
 
 ---
@@ -474,10 +501,15 @@ see or update that clock.
   send or share anything about you.
 - Each **FermFrame** stores your Wi-Fi password and Brewfather/RAPT key on itself and contacts only Brewfather or
   RAPT (for readings) and internet time servers (for the clock).
+- Saved passwords and keys are never shown again, on the FermFrame's page or in the app.
+- A [settings password](#7-settings-password-optional) stops anyone else on your Wi-Fi changing a FermFrame or installing
+  other firmware on it. The setup Wi-Fi has its own password, shown only on the FermFrame's screen.
 - The connection to Brewfather and RAPT is encrypted, but the FermFrame doesn't check certificates (it hasn't enough
-  memory). Anyone on your home network can open a FermFrame's settings page; saved passwords and keys are never shown
-  on it.
-- The app keeps your FermFrame names in `%APPDATA%\FermFrame`.
+  memory).
+- The app keeps your FermFrame names in `%APPDATA%\FermFrame`, and settings passwords there encrypted for your Windows
+  account.
+
+More detail, including what's still not perfect: **[Is FermFrame safe?](SECURITY.md)**
 
 ---
 

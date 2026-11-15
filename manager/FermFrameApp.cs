@@ -30,16 +30,16 @@ using System.Windows.Forms;
 [assembly: AssemblyTitle("FermFrame")]
 [assembly: AssemblyProduct("FermFrame")]
 [assembly: AssemblyDescription("Look after your FermFrames")]
-[assembly: AssemblyVersion("1.0.2.0")]
-[assembly: AssemblyFileVersion("1.0.2.0")]
-[assembly: AssemblyInformationalVersion("1.0.2")]
+[assembly: AssemblyVersion("1.1.0.0")]
+[assembly: AssemblyFileVersion("1.1.0.0")]
+[assembly: AssemblyInformationalVersion("1.1.0")]
 [assembly: AssemblyCopyright("MIT licence - see LICENSE")]
 
 namespace FermFrame
 {
     static class AppInfo
     {
-        public const string Version = "1.0.2";   // keep in step with the assembly versions above
+        public const string Version = "1.1.0";   // keep in step with the assembly versions above
     }
 
     static class Program
@@ -939,16 +939,34 @@ namespace FermFrame
             catch (Exception e) { return new Resp { Status = 0, Error = Why(e) }; }
         }
 
+        // A FermFrame's settings password, by its address ("192.168.1.70"); null = none known
+        public static Func<string, string> PasswordFor = host => null;
+        // Passwords typed in during this run for FermFrames not in the list yet (setting up)
+        public static readonly Dictionary<string, string> Typed = new Dictionary<string, string>();
+        public const string User = "fermframe";
+
+        static Task<HttpResponseMessage> Go(HttpMethod m, string url, HttpContent body, CancellationToken t)
+        {
+            var req = new HttpRequestMessage(m, url) { Content = body };
+            string host = "", pw = null;
+            try { host = new Uri(url).Host; } catch { }
+            if (!Typed.TryGetValue(host, out pw)) pw = PasswordFor(host);
+            if (!string.IsNullOrEmpty(pw))
+                req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic",
+                    Convert.ToBase64String(Encoding.UTF8.GetBytes(User + ":" + pw)));
+            return http.SendAsync(req, t);
+        }
+
         public static Resp Get(string url, int seconds)
         {
             if (Demo.On && Demo.Mine(url)) return Demo.Handle(url, null, null);
-            return Send(t => http.GetAsync(url, t), seconds);
+            return Send(t => Go(HttpMethod.Get, url, null, t), seconds);
         }
 
         public static Resp PostForm(string url, Dictionary<string, string> fields, int seconds)
         {
             if (Demo.On && Demo.Mine(url)) return Demo.Handle(url, fields, null);
-            return Send(t => http.PostAsync(url, new FormUrlEncodedContent(fields), t), seconds);
+            return Send(t => Go(HttpMethod.Post, url, new FormUrlEncodedContent(fields), t), seconds);
         }
 
         public static Resp PostFile(string url, string field, string fileName, byte[] bytes, int seconds)
@@ -958,7 +976,7 @@ namespace FermFrame
             var fc = new ByteArrayContent(bytes);
             fc.Headers.ContentType = System.Net.Http.Headers.MediaTypeHeaderValue.Parse("application/octet-stream");
             mp.Add(fc, field, fileName);
-            return Send(t => http.PostAsync(url, mp, t), seconds);
+            return Send(t => Go(HttpMethod.Post, url, mp, t), seconds);
         }
 
         public static Dictionary<string, object> Json(string s)
@@ -1171,6 +1189,13 @@ namespace FermFrame
     class Clock
     {
         public string Mac = "", Name = "", Ip = "";
+        public string Lock = "";   // the settings password, encrypted for this Windows user (DPAPI); "" = none
+
+        [ScriptIgnore] public string Password
+        {
+            get { return Secret.Open(Lock); }
+            set { Lock = Secret.Seal(value); }
+        }
         [ScriptIgnore] public Dictionary<string, object> Info, Graph;
         [ScriptIgnore] public ClockSettings Settings;
         [ScriptIgnore] public bool Online, Busy;
@@ -1180,6 +1205,26 @@ namespace FermFrame
         [ScriptIgnore] public string Version { get { return UI.Str(Info, "version"); } }
         [ScriptIgnore] public string Build { get { return UI.Str(Info, "build"); } }
         [ScriptIgnore] public string Problem { get { return UI.Str(Info, "problem"); } }
+    }
+
+    // Keeps FermFrame settings passwords readable only by this Windows user on this PC
+    static class Secret
+    {
+        static readonly byte[] Extra = Encoding.UTF8.GetBytes("FermFrame settings password");
+
+        public static string Seal(string plain)
+        {
+            if (string.IsNullOrEmpty(plain)) return "";
+            try { return Convert.ToBase64String(System.Security.Cryptography.ProtectedData.Protect(Encoding.UTF8.GetBytes(plain), Extra, System.Security.Cryptography.DataProtectionScope.CurrentUser)); }
+            catch { return ""; }
+        }
+
+        public static string Open(string sealedText)
+        {
+            if (string.IsNullOrEmpty(sealedText)) return null;
+            try { return Encoding.UTF8.GetString(System.Security.Cryptography.ProtectedData.Unprotect(Convert.FromBase64String(sealedText), Extra, System.Security.Cryptography.DataProtectionScope.CurrentUser)); }
+            catch { return null; }
+        }
     }
 
     static class Store
@@ -1207,7 +1252,7 @@ namespace FermFrame
     {
         public Dictionary<string, string> V = new Dictionary<string, string>();
         public HashSet<string> On = new HashSet<string>();
-        public bool Full, PassSaved, SecretSaved;
+        public bool Full, PassSaved, SecretSaved, HasAdmin, AdminSet;
 
         public string Get(string k, string def = "") { string v; return V.TryGetValue(k, out v) ? v : def; }
 
@@ -1237,6 +1282,7 @@ namespace FermFrame
                 string ph = a.ContainsKey("placeholder") ? a["placeholder"] : "";
                 if (name == "pass") { s.PassSaved = ph.StartsWith("(saved"); continue; }
                 if (name == "secret") { s.SecretSaved = ph.StartsWith("(saved"); continue; }
+                if (name == "admin") { s.HasAdmin = true; s.AdminSet = ph.StartsWith("(set"); continue; }
                 s.V[name] = val;
             }
             foreach (Match m in Regex.Matches(html, "<select\\b([^>]*)>(.*?)</select>", RegexOptions.IgnoreCase | RegexOptions.Singleline))
@@ -1364,6 +1410,311 @@ namespace FermFrame
         }
     }
 
+    // ------------------------------------------------------------------ preview of the FermFrame's screen
+    // Draws the 240x240 screen the way the firmware does (src/main.cpp: drawGraphPage, drawBigPage,
+    // drawClockPage, drawBrewPage) - same positions, colours and graph styles - so the Settings tab can show
+    // what a FermFrame will look like before saving. Keep it in step with the firmware's drawing code.
+
+    class ScreenPreview : Control
+    {
+        // Look (from the Settings tab)
+        public Color CBg = Color.Black, CText = Color.White, CSg = Color.FromArgb(255, 204, 0), CTemp = Color.FromArgb(91, 190, 255),
+                     CGrid = Color.FromArgb(42, 42, 42), CDim = Color.FromArgb(140, 140, 140);
+        public string FontStyle_ = "digital", Graph = "line", Plot = "both";
+        public int Bright = 100, RangeH = 168;
+        public bool Keg = true, Fahrenheit;
+        public int Page;   // 0 graph, 1 big number, 2 clock, 3 another brew
+        // Data (from the FermFrame's /graph.json; made-up example when there is none)
+        public string BrewName = "";
+        public double? Sg, Temp, Og;
+        public int Bat = -1, Day;
+        public bool Ready, Example;
+        public double?[] S, T;   // 88 buckets, temperature in °C
+
+        const int NB = 88, GX0 = 32, GX1 = 208, GY0 = 98, GY1 = 222;
+        static readonly Color CErr = Color.FromArgb(255, 52, 49), COk = Color.FromArgb(90, 255, 82);
+
+        public ScreenPreview()
+        {
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
+        }
+
+        public void SetData(Dictionary<string, object> g)
+        {
+            Func<string, object> v = k => g != null && g.ContainsKey(k) ? g[k] : null;
+            Func<object, double?[]> arr = o =>
+            {
+                var a = o as object[];
+                if (a == null) { var al = o as System.Collections.ArrayList; if (al != null) a = al.ToArray(); }
+                return a == null ? null : a.Select(x => UI.Num(x)).ToArray();
+            };
+            S = arr(v("s")); T = arr(v("t"));
+            Example = S == null || !S.Any(x => x.HasValue);
+            if (Example)
+            {   // the same made-up brew the FermFrame's own web page uses
+                S = new double?[NB]; T = new double?[NB];
+                for (int i = 0; i < NB; i++) { S[i] = 1.012 + 0.038 / (1 + Math.Exp((i - 30) / 8.0)); T[i] = 18 + 1.2 * Math.Sin(i / 9.0); }
+                BrewName = "Example Pale Ale"; Sg = S[NB - 1]; Temp = T[NB - 1]; Og = 1.050; Bat = 57; Day = 6; Ready = false;
+            }
+            else
+            {
+                BrewName = (v("name") as string) ?? ""; Sg = UI.Num(v("sg")); Temp = UI.Num(v("temp")); Og = UI.Num(v("og"));
+                var b = UI.Num(v("bat")); Bat = b.HasValue ? (int)b.Value : -1;
+                var d = UI.Num(v("day")); Day = d.HasValue ? (int)d.Value : 0;
+                var r = UI.Num(v("ready")); Ready = r.HasValue && r.Value != 0;
+            }
+            Invalidate();
+        }
+
+        // The screen only has 16-bit colour (RGB565)
+        static Color C565(Color c) { return Color.FromArgb(c.R & 0xF8 | c.R >> 5, c.G & 0xFC | c.G >> 6, c.B & 0xF8 | c.B >> 5); }
+        static Color Blend(int alpha, Color fg, Color bg)
+        {
+            return Color.FromArgb((fg.R * alpha + bg.R * (255 - alpha)) / 255, (fg.G * alpha + bg.G * (255 - alpha)) / 255, (fg.B * alpha + bg.B * (255 - alpha)) / 255);
+        }
+        double ShowT(double c) { return Fahrenheit ? c * 9 / 5 + 32 : c; }
+        static string Fmt(double v, int d) { return v.ToString("F" + d, CultureInfo.InvariantCulture); }
+
+        // ---- text, positioned like TFT_eSPI datums: horizontal L/C/R, vertical T/M/B
+        enum Kind { F1, F2, F4, Seg7, Huge, StyleBig, StyleMid }
+
+        Graphics g;
+        void Txt(string s, float x, float y, string datum, Color col, Kind k)
+        {
+            if (string.IsNullOrEmpty(s)) return;
+            if (k == Kind.StyleBig && FontStyle_ == "digital") k = Kind.Seg7;
+            if (k == Kind.StyleMid && FontStyle_ == "digital") k = Kind.F4;
+            char h = datum[1], v = datum[0];
+            if (k == Kind.Seg7) { Seg7(s, x, y, h, v, col); return; }
+
+            string fam = "Arial"; var st = FontStyle.Regular; float em; float cellPad = 0, cellH = 0;
+            switch (k)
+            {
+                case Kind.F1: fam = "Consolas"; em = 9.5f; cellH = 8; cellPad = 1; break;
+                case Kind.F2: em = 13.5f; cellH = 16; cellPad = 3; break;
+                case Kind.F4: em = 24f; cellH = 26; cellPad = 4; break;
+                case Kind.Huge: em = 94f; cellH = 75; cellPad = 4; break;
+                default:
+                    bool big = k == Kind.StyleBig;
+                    if (FontStyle_ == "classic") { fam = "Times New Roman"; em = big ? 50 : 37; }
+                    else if (FontStyle_ == "mono") { fam = "Courier New"; em = big ? 46 : 35; }   // FreeMonoBold: 28 px per character at 24 pt
+                    else em = big ? 47 : 35;
+                    st = FontStyle.Bold;
+                    break;
+            }
+            using (var ff = new FontFamily(fam))
+            using (var path = new GraphicsPath())
+            using (var refp = new GraphicsPath())
+            {
+                path.AddString(s, ff, (int)st, em, PointF.Empty, StringFormat.GenericTypographic);
+                refp.AddString("0", ff, (int)st, em, PointF.Empty, StringFormat.GenericTypographic);
+                var rb = refp.GetBounds(); var ink = path.GetBounds();
+                if (ink.Width <= 0) { ink = rb; ink.Width = 0; }
+                float dh = rb.Height;
+                // where the top of a digit goes
+                float top;
+                if (cellH > 0) top = v == 'T' ? y + cellPad : v == 'M' ? y - dh / 2 : y - cellPad - dh;
+                else top = v == 'T' ? y : v == 'M' ? y - dh / 2 : y - dh;
+                float left = h == 'L' ? x : h == 'R' ? x - ink.Width : x - ink.Width / 2;
+                using (var m = new Matrix()) { m.Translate(left - ink.Left, top - rb.Top); path.Transform(m); }
+                using (var b = new SolidBrush(col)) g.FillPath(b, path);
+            }
+        }
+
+        // TFT_eSPI font 7: 7-segment digits, 32 px wide and 48 px high ('.' and ':' are narrow)
+        void Seg7(string s, float x, float y, char h, char v, Color col)
+        {
+            Func<char, float> adv = c => c == '.' || c == ':' ? 12 : c == ' ' ? 12 : 32;
+            float w = s.Sum(c => adv(c));
+            float left = h == 'L' ? x : h == 'R' ? x - w : x - w / 2;
+            float top = v == 'T' ? y : v == 'M' ? y - 24 : y - 48;
+            using (var b = new SolidBrush(col))
+                foreach (var c in s)
+                {
+                    if (c == '.') g.FillRectangle(b, left + 3, top + 42, 6, 6);
+                    else if (c == ':') { g.FillRectangle(b, left + 3, top + 12, 6, 6); g.FillRectangle(b, left + 3, top + 30, 6, 6); }
+                    else if (c == '-') Segs(b, left, top, "g");
+                    else if (c >= '0' && c <= '9') Segs(b, left, top, new[] { "abcdef", "bc", "abged", "abgcd", "fgbc", "afgcd", "afgedc", "abc", "abcdefg", "abcdfg" }[c - '0']);
+                    left += adv(c);
+                }
+        }
+
+        void Segs(Brush b, float x, float y, string on)
+        {
+            float t = 6, L = x + 5, R = x + 25, T0 = y + 1, M = y + 24, B = y + 47;   // leaves a gap before the next digit
+            Action<float, float, float> hz = (x0, x1, yc) => g.FillPolygon(b, new[] { new PointF(x0, yc), new PointF(x0 + t / 2, yc - t / 2), new PointF(x1 - t / 2, yc - t / 2), new PointF(x1, yc), new PointF(x1 - t / 2, yc + t / 2), new PointF(x0 + t / 2, yc + t / 2) });
+            Action<float, float, float> vt = (xc, y0, y1) => g.FillPolygon(b, new[] { new PointF(xc, y0), new PointF(xc + t / 2, y0 + t / 2), new PointF(xc + t / 2, y1 - t / 2), new PointF(xc, y1), new PointF(xc - t / 2, y1 - t / 2), new PointF(xc - t / 2, y0 + t / 2) });
+            float gap = 1;
+            foreach (var c in on)
+                switch (c)
+                {
+                    case 'a': hz(L + gap, R - gap, T0 + t / 2); break;
+                    case 'd': hz(L + gap, R - gap, B - t / 2); break;
+                    case 'g': hz(L + gap, R - gap, M); break;
+                    case 'f': vt(L, T0 + t / 2 + gap, M - gap); break;
+                    case 'b': vt(R, T0 + t / 2 + gap, M - gap); break;
+                    case 'e': vt(L, M + gap, B - t / 2 - gap); break;
+                    case 'c': vt(R, M + gap, B - t / 2 - gap); break;
+                }
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            g = e.Graphics;
+            g.Clear(UI.Behind(this));
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            // the clock's body and the screen inside it
+            float side = Math.Min(Width, Height), bez = side * 0.045f, scr = side - 2 * bez;
+            using (var body = UI.Round(new RectangleF(0, 0, side - 1, side - 1), side * 0.07f))
+            using (var bb = new SolidBrush(Color.FromArgb(52, 52, 52))) g.FillPath(bb, body);
+            var state = g.Save();
+            g.TranslateTransform(bez, bez);
+            g.ScaleTransform(scr / 240f, scr / 240f);
+            g.SetClip(new RectangleF(0, 0, 240, 240));
+
+            var bg = C565(CBg); var text = C565(CText); var sg = C565(CSg); var temp = C565(CTemp); var grid = C565(CGrid); var dim = C565(CDim);
+            g.Clear(bg);
+            if (Page == 1) DrawBig(bg, text, sg, temp, dim);
+            else if (Page == 2) DrawClock(text, sg, grid, dim);
+            else if (Page == 3) DrawBrew(text, sg, temp, dim);
+            else DrawGraph(bg, text, sg, temp, grid, dim);
+
+            // brightness: the backlight dims the whole screen
+            if (Bright < 100) using (var sh = new SolidBrush(Color.FromArgb((int)((100 - Bright) * 2.2), 0, 0, 0))) g.FillRectangle(sh, 0, 0, 240, 240);
+            g.Restore(state);
+        }
+
+        void Header(string name, int bat, Color text, Color dim)
+        {
+            var n = string.IsNullOrEmpty(name) ? "FermFrame" : name;
+            if (n.Length > 22) n = n.Substring(0, 22);
+            Txt(n, 4, 2, "TL", text, Kind.F2);
+            if (bat >= 0) Txt(bat + "%", 236, 2, "TR", bat < 20 ? CErr : dim, Kind.F2);
+        }
+
+        double? Abv() { if (!Og.HasValue || !Sg.HasValue) return null; var a = (Og.Value - Sg.Value) * 131.25; return a < 0 ? 0 : a; }
+        string SgText(double? v) { return v.HasValue ? Fmt(v.Value, 3) : "-.---"; }
+        string TText(double? v) { return v.HasValue ? Fmt(ShowT(v.Value), 1) : "--"; }
+        long Span() { return RangeH > 0 ? RangeH * 3600L : Math.Max(1, Day > 0 ? Day : 7) * 86400L; }
+
+        void DrawGraph(Color bg, Color text, Color sg, Color temp, Color grid, Color dim)
+        {
+            Header(BrewName, Bat, text, dim);
+            Txt(SgText(Sg), 4, 22, "TL", sg, Kind.StyleBig);
+            Txt(TText(Temp), 226, 24, "TR", temp, Kind.StyleMid);
+            using (var p = new Pen(temp)) g.DrawEllipse(p, 226 + 5 - 2, 24 + 3 - 2, 4, 4);
+            var abv = Abv();
+            if (abv.HasValue) Txt(Fmt(abv.Value, 1) + "% ABV", 236, 56, "TR", text, Kind.F2);
+            if (Keg && Ready) { Txt("Ready to keg?", 4, 78, "TL", COk, Kind.F2); Txt("5m ago", 236, 78, "TR", dim, Kind.F2); }
+            else Txt((Day > 0 ? "Day " + Day + "  " : "") + (Og.HasValue ? "OG " + Fmt(Og.Value, 3) + "  " : "") + "5m ago", 4, 78, "TL", dim, Kind.F2);
+
+            bool wantSg = Plot != "temp", wantT = Plot != "sg";
+            var sv = S ?? new double?[0]; var tv = (T ?? new double?[0]).Select(x => x.HasValue ? (double?)ShowT(x.Value) : null).ToArray();
+            var sf = sv.Where(x => x.HasValue).Select(x => x.Value).ToList(); var tf = tv.Where(x => x.HasValue).Select(x => x.Value).ToList();
+            bool haveSg = wantSg && sf.Count > 0, haveT = wantT && tf.Count > 0;
+
+            using (var gp = new Pen(grid))
+            {
+                for (int k = 0; k <= 4; k++) { float yy = GY0 + (GY1 - GY0) * k / 4; g.DrawLine(gp, GX0, yy, GX1, yy); }
+                long span = Span(), step = span <= 2 * 86400L ? 6 * 3600L : span <= 16 * 86400L ? 86400L : 7 * 86400L;
+                for (long s = step; s < span; s += step) { float xx = GX1 - (float)((GX1 - GX0) * (double)s / span); g.DrawLine(gp, xx, GY0, xx, GY1); }
+            }
+            if (!haveSg && !haveT) { Txt("No readings yet in this range", 120, (GY0 + GY1) / 2, "MC", dim, Kind.F2); return; }
+
+            double sMin = 0, sMax = 0, tMin = 0, tMax = 0;
+            if (haveSg) { sMin = sf.Min(); sMax = sf.Max(); if (sMax - sMin < 0.004) { var m = (sMax + sMin) / 2; sMin = m - 0.002; sMax = m + 0.002; } var p = (sMax - sMin) * 0.08; sMin -= p; sMax += p; }
+            if (haveT) { tMin = tf.Min(); tMax = tf.Max(); if (tMax - tMin < 2) { var m = (tMax + tMin) / 2; tMin = m - 1; tMax = m + 1; } var p = (tMax - tMin) * 0.08; tMin -= p; tMax += p; }
+            if (haveSg) for (int k = 0; k <= 4; k += 2)
+            {
+                var val = sMax - (sMax - sMin) * k / 4; int pts = Math.Max(0, Math.Min(999, (int)Math.Round((val - 1.0) * 1000)));
+                Txt(pts.ToString("000"), GX0 - 3, GY0 + (GY1 - GY0) * k / 4, "MR", sg, Kind.F1);
+            }
+            if (haveT) for (int k = 0; k <= 4; k += 2) Txt(Fmt(tMax - (tMax - tMin) * k / 4, 1), GX1 + 3, GY0 + (GY1 - GY0) * k / 4, "ML", temp, Kind.F1);
+
+            Func<double, double, double, float> yOf = (val, lo, hi) => GY1 - (float)((val - lo) / (hi - lo) * (GY1 - GY0));
+            int n = Math.Min(NB, sv.Length);
+            if (haveSg && Graph == "bars")
+            {
+                long span = Span(), barSecs = span <= 2 * 86400L ? 2 * 3600L : 86400L;
+                int nBars = (int)Math.Max(1, Math.Min(NB, (span + barSecs - 1) / barSecs));
+                using (var fill = new SolidBrush(Blend(170, sg, bg))) using (var top = new Pen(sg))
+                    for (int b = 0; b < nBars; b++)
+                    {
+                        int i0 = b * NB / nBars, i1 = (b + 1) * NB / nBars; double s = 0; int c = 0;
+                        for (int i = i0; i < i1 && i < n; i++) if (sv[i].HasValue) { s += sv[i].Value; c++; }
+                        if (c == 0) continue;
+                        float x0 = GX0 + i0 * 2 + 1, w = Math.Max(2, (i1 - i0) * 2 - 2), yy = yOf(s / c, sMin, sMax);
+                        g.FillRectangle(fill, x0, yy, w, GY1 - yy); g.DrawLine(top, x0, yy, x0 + w, yy);
+                    }
+            }
+            else if (haveSg)
+            {
+                var pts = new List<PointF>();
+                for (int i = 0; i < n; i++) if (sv[i].HasValue) pts.Add(new PointF(GX0 + i * 2 + 1, yOf(sv[i].Value, sMin, sMax)));
+                if (Graph == "dots") using (var b = new SolidBrush(sg)) foreach (var q in pts) g.FillRectangle(b, q.X - 1, q.Y - 1, 3, 3);
+                else
+                {
+                    if (Graph == "area" && pts.Count > 1)
+                        using (var fill = new SolidBrush(Blend(80, sg, bg)))
+                        {
+                            var poly = new List<PointF>(pts); poly.Add(new PointF(pts[pts.Count - 1].X, GY1)); poly.Add(new PointF(pts[0].X, GY1));
+                            g.FillPolygon(fill, poly.ToArray());
+                        }
+                    if (pts.Count > 1) using (var pen = new Pen(sg, 2)) g.DrawLines(pen, pts.ToArray());
+                }
+            }
+            if (haveT)
+            {
+                var pts = new List<PointF>();
+                for (int i = 0; i < Math.Min(NB, tv.Length); i++) if (tv[i].HasValue) pts.Add(new PointF(GX0 + i * 2 + 1, yOf(tv[i].Value, tMin, tMax)));
+                if (Graph == "dots") using (var b = new SolidBrush(temp)) foreach (var q in pts) g.FillRectangle(b, q.X - 1, q.Y - 1, 2, 2);
+                else if (pts.Count > 1) using (var pen = new Pen(temp, 1)) g.DrawLines(pen, pts.ToArray());
+            }
+            Txt(RangeH == 0 ? "start" : RangeH < 48 ? "-24h" : "-" + (RangeH / 24) + "d", GX0, 240, "BL", dim, Kind.F1);
+            Txt("now", GX1, 240, "BR", dim, Kind.F1);
+            if (haveSg) Txt("SG", 70, 240, "BC", sg, Kind.F1);
+            if (haveT) Txt(Fahrenheit ? "Temp F" : "Temp C", 160, 240, "BC", temp, Kind.F1);
+        }
+
+        void DrawBig(Color bg, Color text, Color sg, Color temp, Color dim)
+        {
+            Header(BrewName, Bat, text, dim);
+            Txt("GRAVITY", 120, 30, "TC", dim, Kind.F2);
+            Txt(SgText(Sg), 120, 88, "MC", sg, Kind.Huge);
+            Txt(TText(Temp), 64, 150, "MC", temp, Kind.StyleMid);
+            var abv = Abv();
+            Txt(abv.HasValue ? Fmt(abv.Value, 1) : "--", 176, 150, "MC", text, Kind.StyleMid);
+            Txt(Fahrenheit ? "temp F" : "temp C", 64, 174, "TC", dim, Kind.F2);
+            Txt("% ABV", 176, 174, "TC", dim, Kind.F2);
+            if (Keg && Ready) Txt("Ready to keg?", 120, 200, "TC", COk, Kind.F4);
+            else if (Day > 0) Txt("Day " + Day, 120, 200, "TC", text, Kind.F4);
+            Txt("5m ago", 120, 226, "TC", dim, Kind.F2);
+        }
+
+        void DrawClock(Color text, Color sg, Color grid, Color dim)
+        {
+            var now = DateTime.Now;
+            Txt(now.ToString("HH:mm"), 120, 84, "MC", text, Kind.Huge);
+            Txt(now.ToString("ddd d MMM", CultureInfo.InvariantCulture), 120, 150, "MC", dim, Kind.StyleMid);
+            using (var p = new Pen(grid)) g.DrawLine(p, 20, 186, 220, 186);
+            var line = string.IsNullOrEmpty(BrewName) ? "FermFrame" : BrewName;
+            if (line.Length > 16) line = line.Substring(0, 16);
+            Txt(line, 120, 196, "TC", text, Kind.F2);
+            Txt(SgText(Sg) + "    " + TText(Temp) + (Fahrenheit ? " F" : " C"), 120, 216, "TC", sg, Kind.F2);
+        }
+
+        void DrawBrew(Color text, Color sg, Color temp, Color dim)
+        {
+            Header("Your other brew", -1, text, dim);
+            Txt("GRAVITY", 120, 30, "TC", dim, Kind.F2);
+            Txt("1.024", 120, 88, "MC", sg, Kind.Huge);
+            Txt(Fmt(ShowT(19.5), 1), 120, 150, "MC", temp, Kind.StyleMid);
+            Txt(Fahrenheit ? "temp F" : "temp C", 120, 174, "TC", dim, Kind.F2);
+            Txt("12m ago", 120, 204, "TC", dim, Kind.F2);
+            Txt("Brew 2 of 2", 120, 224, "TC", dim, Kind.F2);
+        }
+    }
+
     // A rounded card for grouping things; see-through labels on it show the card colour
     class Card : Panel
     {
@@ -1451,6 +1802,11 @@ namespace FermFrame
             BuildRight();
             FinishLayout();
             list.ItemHeight = UI.Px(70);
+            Net.PasswordFor = host =>
+            {
+                var c = clocks.ToArray().FirstOrDefault(x => x.Ip == host && x.Lock != "");
+                return c == null ? null : c.Password;
+            };
 
             timer = new System.Windows.Forms.Timer { Interval = 60000 };
             timer.Tick += (s, e) => { Poll(false); CheckForUpdate(null); };
@@ -1467,6 +1823,25 @@ namespace FermFrame
         }
 
         Clock Sel { get { return list.SelectedIndex >= 0 && list.SelectedIndex < clocks.Count ? clocks[list.SelectedIndex] : null; } }
+
+        // A FermFrame said "password needed" (401): asks for it, remembers it. false = the person cancelled.
+        // Call on the UI thread.
+        bool AskPassword(Clock c, bool wrong)
+        {
+            var pw = Prompt.Ask(this, "Settings password",
+                (wrong ? "That password didn't work. " : "") + c.Name + "'s settings have a password. Type it here and this app remembers it (only on this PC, for your Windows account).",
+                "", true);
+            if (pw == null) return false;
+            c.Password = pw;
+            Store.Save(clocks);
+            return true;
+        }
+
+        // Same, from a background thread
+        bool AskPasswordFromWorker(Clock c, bool wrong)
+        {
+            try { return (bool)Invoke(new Func<bool>(() => AskPassword(c, wrong))); } catch { return false; }
+        }
 
         // ---------------- updates
 
@@ -1823,7 +2198,7 @@ namespace FermFrame
             {
                 var r = Net.Get(c.Base + "/graph.json", 10);
                 var g = r.Status == 200 ? Net.Json(r.Body) : null;
-                if (g != null) BeginInvoke(new Action(() => { c.Graph = g; if (Sel == c) ShowOverview(); }));
+                if (g != null) BeginInvoke(new Action(() => { c.Graph = g; if (Sel == c) { ShowOverview(); UpdatePreview(); } }));
             });
         }
 
@@ -1942,9 +2317,10 @@ namespace FermFrame
 
         // ---------------- Settings
 
-        Panel setScroll;
-        Label setNote, saveStatus, lUser, lKey, lBright, passHint, keyHint, payHint;
-        TextBox tSsid, tPass, tUser, tKey, tDevice;
+        Panel setScroll, adminCard;
+        Label setNote, saveStatus, lUser, lKey, lBright, passHint, keyHint, payHint, lAdmin, adminHint;
+        TextBox tSsid, tPass, tUser, tKey, tDevice, tAdmin;
+        CheckBox kAdminOff;
         RadioButton rBf, rRapt, rC, rF;
         ComboBox cTheme, cFont, cNLevel, cGraph, cPlot, cRange, cTz;
         Button[] colours;
@@ -2080,6 +2456,14 @@ namespace FermFrame
             Opt.Fill(nRefresh, "1", "1 minute", "2", "2 minutes", "5", "5 minutes", "10", "10 minutes", "15", "15 minutes", "30", "30 minutes",
                 "60", "1 hour", "120", "2 hours");
             nRefresh.Location = new Point(X, y); add(nRefresh); y += 50;
+
+            head("7. Settings password (optional)"); adminCard = cur;
+            var ai = UI.Lbl("Stops anyone else on your Wi-Fi from changing this FermFrame's settings or installing other firmware on it. " +
+                "This app remembers it for you. Forgot it? Plug the FermFrame in 3 times in a row (unplug it each time within 10 seconds) to open its setup mode.", 9, false, UI.Dim);
+            ai.AutoSize = false; ai.Size = new Size(W, 54); ai.Location = new Point(X, y); add(ai); y += 60;
+            lAdmin = label("New password"); tAdmin = UI.Box(true); put(tAdmin, 32);
+            adminHint = UI.Lbl("", 9, false, UI.Dim); adminHint.Location = new Point(X, y); add(adminHint); y += 26;
+            kAdminOff = check("Remove the password");
             close(); var spacer = new Label { Location = new Point(0, y), Size = new Size(10, 4) }; setScroll.Controls.Add(spacer);
 
             var bar = new Panel { Dock = DockStyle.Bottom, Height = 58, Padding = new Padding(0, 10, 0, 0) };
@@ -2090,10 +2474,72 @@ namespace FermFrame
             saveStatus = UI.Lbl("", 10, false, UI.Dim); saveStatus.Location = new Point(360, 22);
             bar.Controls.AddRange(new Control[] { saveBtn, reload, saveStatus });
 
+            // ---- live preview of the screen, beside the settings
+            pvPanel = new Panel { Dock = DockStyle.Right, Width = 330, Padding = new Padding(16, 0, 0, 0) };
+            var pvHead = UI.Lbl("Preview", 13, true, UI.Amber); pvHead.Location = new Point(16, 6);
+            preview = new ScreenPreview { Location = new Point(16, 44), Size = new Size(300, 300) };
+            var pvRow = new FlowLayoutPanel { Location = new Point(16, 356), Size = new Size(310, 84), WrapContents = true };
+            pvBtns = new Button[4];
+            var pvNames = new[] { "Graph", "Big number", "Clock", "Other brew" };
+            for (int i = 0; i < 4; i++)
+            {
+                int k = i;
+                var b = UI.Btn(pvNames[i]); b.Margin = new Padding(0, 0, 6, 6);
+                b.Click += (s, e) => { preview.Page = k; PreviewButtons(); preview.Invalidate(); };
+                pvBtns[i] = b; pvRow.Controls.Add(b);
+            }
+            pvNote = UI.Lbl("", 9, false, UI.Dim); pvNote.AutoSize = false; pvNote.Location = new Point(16, 446); pvNote.Size = new Size(300, 110);
+            pvPanel.Controls.AddRange(new Control[] { pvHead, preview, pvRow, pvNote });
+
+            // redraw the preview whenever something that changes the look changes
+            EventHandler upd = (s, e) => UpdatePreview();
+            foreach (var c in new ComboBox[] { cTheme, cFont, cGraph, cPlot, cRange }) c.SelectedIndexChanged += upd;
+            foreach (var k in new[] { kGraph, kBig, kClock, kBrews, kKeg }) k.CheckedChanged += upd;
+            rF.CheckedChanged += upd; trBright.ValueChanged += upd;
+            foreach (var b in colours) b.BackColorChanged += upd;
+
             p.Controls.Add(setScroll);
+            p.Controls.Add(pvPanel);
             p.Controls.Add(bar);
             setScroll.BringToFront();
             return p;
+        }
+
+        Panel pvPanel;
+        ScreenPreview preview;
+        Button[] pvBtns;
+        Label pvNote;
+
+        // Copies what the Settings tab shows into the preview
+        void UpdatePreview()
+        {
+            if (preview == null || filling) return;
+            var c = Sel;
+            preview.CBg = colours[0].BackColor; preview.CText = colours[1].BackColor; preview.CSg = colours[2].BackColor;
+            preview.CTemp = colours[3].BackColor; preview.CGrid = colours[4].BackColor; preview.CDim = colours[5].BackColor;
+            preview.FontStyle_ = Opt.Of(cFont); preview.Graph = Opt.Of(cGraph); preview.Plot = Opt.Of(cPlot);
+            int r; preview.RangeH = int.TryParse(Opt.Of(cRange), out r) ? r : 168;
+            preview.Bright = trBright.Value; preview.Keg = kKeg.Checked; preview.Fahrenheit = rF.Checked;
+            preview.SetData(c == null ? null : c.Graph);
+            var on = new[] { kGraph.Checked, kBig.Checked, kClock.Checked, kBrews.Checked };
+            if (!on[preview.Page] && on.Any(x => x)) preview.Page = Array.IndexOf(on, true);
+            PreviewButtons();
+            int n = on.Count(x => x);
+            pvNote.Text = (preview.Example ? "Showing an example brew until this FermFrame has readings. " : "With this FermFrame's latest readings. ") +
+                (n > 1 ? "It takes turns showing the " + n + " ticked pages. " : "") +
+                "Changes show here straight away; the FermFrame changes when you press Save to FermFrame." +
+                (preview.Page == 3 ? " (Other brew shows a made-up brew.)" : "");
+        }
+
+        void PreviewButtons()
+        {
+            var on = new[] { kGraph.Checked, kBig.Checked, kClock.Checked, kBrews.Checked };
+            for (int i = 0; i < 4; i++)
+            {
+                bool sel = preview.Page == i;
+                pvBtns[i].BackColor = sel ? UI.Amber : UI.Field;
+                pvBtns[i].ForeColor = sel ? Color.Black : (on[i] ? UI.Text : UI.Dim);
+            }
         }
 
         // Times every 15 minutes (a clock set to another time keeps it - Opt.Select adds it)
@@ -2122,6 +2568,7 @@ namespace FermFrame
             kGraph.Checked = true; kBig.Checked = false; kClock.Checked = false; kBrews.Checked = false;
             Opt.Select(nSecs, "10"); kKeg.Checked = true;
             filling = false;
+            UpdatePreview();
             saveStatus.Text = "Press Save to FermFrame to use these."; saveStatus.ForeColor = UI.Dim;
         }
 
@@ -2132,10 +2579,16 @@ namespace FermFrame
             ThreadPool.QueueUserWorkItem(_ =>
             {
                 var r = Net.Get(c.Base + "/", 20);
+                for (int tries = 0; r.Status == 401 && tries < 3; tries++)
+                {
+                    if (!AskPasswordFromWorker(c, c.Lock != "")) break;
+                    r = Net.Get(c.Base + "/", 20);
+                }
                 var s = r.Status == 200 ? ClockSettings.Parse(r.Body) : null;
                 BeginInvoke(new Action(() =>
                 {
                     if (s != null) { c.Settings = s; if (!keepStatus) saveStatus.Text = ""; }
+                    else if (r.Status == 401) saveStatus.Text = "This FermFrame's settings have a password. Press Undo my changes to type it.";
                     else saveStatus.Text = "Couldn't read the settings (" + (r.Error ?? "code " + r.Status) + ").";
                     if (Sel == c) { FillSettings(); ShowOverview(); }
                 }));
@@ -2199,8 +2652,15 @@ namespace FermFrame
             bool f = s.Get("unit", "C") == "F"; rF.Checked = f; rC.Checked = !f;
             Opt.Select(cTz, s.Get("tz", "GMT0BST,M3.5.0/1,M10.5.0"));
             SetNum(nRefresh, s.Get("refresh"), 5, "minutes");
+            adminCard.Visible = s.HasAdmin;   // FermFrame 2.3 and later
+            tAdmin.Text = ""; kAdminOff.Checked = false;
+            kAdminOff.Visible = s.AdminSet;
+            lAdmin.Text = s.AdminSet ? "Change the password" : "Password (leave blank for none)";
+            adminHint.Text = s.AdminSet ? "A password is set. Leave blank to keep it." : "No password set.";
             foreach (var x in lookControls) x.Enabled = s.Full;
             filling = false;
+            pvPanel.Visible = s.Full;
+            UpdatePreview();
         }
 
         static string Hex(Color c) { return "#" + c.R.ToString("x2") + c.G.ToString("x2") + c.B.ToString("x2"); }
@@ -2247,15 +2707,35 @@ namespace FermFrame
                 if (kKeg.Checked) d["keg"] = "1";
             }
 
+            string newAdmin = null; bool removeAdmin = false;
+            if (s.HasAdmin)
+            {
+                if (s.AdminSet && kAdminOff.Checked) { d["adminOff"] = "1"; removeAdmin = true; }
+                else if (tAdmin.Text.Trim() != "")
+                {
+                    newAdmin = tAdmin.Text.Trim();
+                    if (newAdmin.Length > 32) { saveStatus.Text = "The settings password can be up to 32 characters."; saveStatus.ForeColor = UI.Bad; return; }
+                    d["admin"] = newAdmin;
+                }
+            }
+
             saveBtn.Enabled = false; saveStatus.Text = "Saving..."; saveStatus.ForeColor = UI.Dim;
             ThreadPool.QueueUserWorkItem(_ =>
             {
                 var r = Net.PostForm(c.Base + "/save", d, 20);
+                for (int tries = 0; r.Status == 401 && tries < 3; tries++)
+                {
+                    if (!AskPasswordFromWorker(c, c.Lock != "")) break;
+                    r = Net.PostForm(c.Base + "/save", d, 20);
+                }
                 BeginInvoke(new Action(() =>
                 {
                     saveBtn.Enabled = true;
                     if (r.Status == 200)
                     {
+                        if (newAdmin != null) c.Password = newAdmin;
+                        if (removeAdmin) c.Lock = "";
+                        if (newAdmin != null || removeAdmin) Store.Save(clocks);
                         saveStatus.Text = wifiChange ? "Saved. The FermFrame is restarting and joining the Wi-Fi." : "Saved. Have a look at your FermFrame.";
                         saveStatus.ForeColor = UI.Good;
                         c.Settings = null;
@@ -2375,6 +2855,13 @@ namespace FermFrame
                     Action<string> say = t => BeginInvoke(new Action(() => FwLog(t)));
                     say("Sending FermFrame to " + name + "... (about 30 seconds)");
                     var r = Net.PostFile(c.Base + "/update", "firmware", "fermframe.bin", bytes, 180);
+                    for (int tries = 0; r.Status == 401 && tries < 3; tries++)
+                    {
+                        if (!AskPasswordFromWorker(c, c.Lock != "")) break;
+                        say("Sending FermFrame to " + name + "... (about 30 seconds)");
+                        r = Net.PostFile(c.Base + "/update", "firmware", "fermframe.bin", bytes, 180);
+                    }
+                    if (r.Status == 401) { results.Add(name + ": not updated - its settings password is needed."); allGood = false; continue; }
                     if (r.Status != 200 && r.Status != 0) { results.Add(name + ": the FermFrame said no (" + r.Status + " " + r.Body.Substring(0, Math.Min(80, r.Body.Length)) + ")"); allGood = false; continue; }
                     say(name + " is restarting...");
                     Thread.Sleep(10000);
@@ -2414,6 +2901,7 @@ namespace FermFrame
                     var c = clocks.FirstOrDefault(x => x.Mac == mac);
                     if (c == null) { c = new Clock { Mac = mac, Name = NextName() }; clocks.Add(c); }
                     c.Ip = ip; c.Settings = null;
+                    if (f.AdminPass != null) c.Password = f.AdminPass;
                     Store.Save(clocks); RefreshList();
                     list.SelectedIndex = clocks.IndexOf(c);
                 };
@@ -2629,16 +3117,18 @@ namespace FermFrame
 
     static class Prompt
     {
-        public static string Ask(IWin32Window owner, string title, string text, string value)
+        public static string Ask(IWin32Window owner, string title, string text, string value, bool secret = false)
         {
             using (var f = new PromptForm())
             {
                 f.Text = title; f.FormBorderStyle = FormBorderStyle.FixedDialog; f.StartPosition = FormStartPosition.CenterParent;
-                f.MinimizeBox = false; f.MaximizeBox = false; f.ClientSize = new Size(420, 140);
-                var l = UI.Lbl(text); l.Location = new Point(16, 14);
-                var t = UI.Box(); t.Location = new Point(16, 42); t.Width = 388; t.Text = value;
-                var ok = UI.Btn("OK", true); ok.Location = new Point(222, 88); ok.AutoSize = false; ok.Width = 88; ok.DialogResult = DialogResult.OK;
-                var no = UI.Btn("Cancel"); no.Location = new Point(316, 88); no.AutoSize = false; no.Width = 88; no.DialogResult = DialogResult.Cancel;
+                f.MinimizeBox = false; f.MaximizeBox = false;
+                var l = UI.Lbl(text); l.Location = new Point(16, 14); l.MaximumSize = new Size(388, 0);
+                int ty = 14 + Math.Max(28, l.PreferredHeight + 8);
+                f.ClientSize = new Size(420, ty + 98);
+                var t = UI.Box(secret); t.Location = new Point(16, ty); t.Width = 388; t.Text = value;
+                var ok = UI.Btn("OK", true); ok.Location = new Point(222, ty + 46); ok.AutoSize = false; ok.Width = 88; ok.DialogResult = DialogResult.OK;
+                var no = UI.Btn("Cancel"); no.Location = new Point(316, ty + 46); no.AutoSize = false; no.Width = 88; no.DialogResult = DialogResult.Cancel;
                 f.Controls.AddRange(new Control[] { l, t, ok, no });
                 f.AcceptButton = ok; f.CancelButton = no;
                 f.Done();
@@ -2712,7 +3202,7 @@ namespace FermFrame
             return new Iface { Name = name, Connected = Regex.IsMatch(t, "(?m)^\\s*State\\s*:\\s*connected"), Ssid = Field(t, "SSID"), Profile = Field(t, "Profile") };
         }
 
-        public class Network { public string Ssid; public bool Has24; }
+        public class Network { public string Ssid, Auth; public bool Has24, Open; }
 
         public static List<Network> GetNetworks()
         {
@@ -2726,7 +3216,8 @@ namespace FermFrame
                 var ssid = block.Split('\n')[0].Trim();
                 var bands = Regex.Matches(block, "Band\\s*:\\s*([\\d.]+)").Cast<Match>().Select(m => m.Groups[1].Value).ToList();
                 var chans = Regex.Matches(block, "(?m)^\\s*Channel\\s*:\\s*(\\d+)").Cast<Match>().Select(m => int.Parse(m.Groups[1].Value)).ToList();
-                if (ssid != "") nets.Add(new Network { Ssid = ssid, Has24 = bands.Contains("2.4") || chans.Any(c => c <= 14) });
+                var auth = Field(block, "Authentication") ?? "";
+                if (ssid != "") nets.Add(new Network { Ssid = ssid, Has24 = bands.Contains("2.4") || chans.Any(c => c <= 14), Auth = auth, Open = auth.StartsWith("Open", StringComparison.OrdinalIgnoreCase) });
             }
             return nets;
         }
@@ -2761,8 +3252,9 @@ namespace FermFrame
     class SetupForm : DarkForm
     {
         public Action<string, string> Done;
+        public string AdminPass;   // the settings password the new FermFrame got, if any
         ComboBox ssidBox;
-        TextBox passBox, userBox, keyBox;
+        TextBox passBox, userBox, keyBox, adminBox;
         RadioButton rbBf, rbRapt;
         Label l1, l2;
         LinkLabel help;
@@ -2774,13 +3266,13 @@ namespace FermFrame
         const string SetupSsid = "FermFrame-Setup", OldSetupSsid = "BrewScreen-Setup", TmpPrefix = "fermframe-tmp-";
         string iface, prevProfile, clockMac;
         List<string> madeProfiles = new List<string>();
-        string jSsid, jPass, jSource, jUser, jSecret;
+        string jSsid, jPass, jSource, jUser, jSecret, jAdmin = "";
 
         public SetupForm()
         {
             Text = "Set up a new FermFrame";
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
-            ClientSize = new Size(560, 798);
+            ClientSize = new Size(560, 900);
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.FixedSingle; MaximizeBox = false; MinimizeBox = false;
             Font = UI.F(10.5f);
@@ -2809,6 +3301,10 @@ namespace FermFrame
             userBox = UI.Box(); put(userBox, 38);
             l2 = UI.Lbl("Brewfather API key", 10, false, UI.Dim); put(l2, 24);
             keyBox = UI.Box(true); put(keyBox, 46);
+            put(UI.Lbl("3. Settings password (optional)", 11, true, UI.Amber), 30);
+            var an = UI.Lbl("Stops anyone else on your Wi-Fi changing the FermFrame. This app remembers it.", 9.5f, false, UI.Dim);
+            an.AutoSize = false; an.Height = 22; put(an, 26);
+            adminBox = UI.Box(true); put(adminBox, 46);
             rbBf.CheckedChanged += (s, e) => Labels();
             help.LinkClicked += (s, e) => { try { Process.Start((string)help.Tag); } catch { } };
             Labels();
@@ -2893,8 +3389,10 @@ namespace FermFrame
         {
             logBox.Clear();
             jSsid = ssidBox.Text.Trim(); jPass = passBox.Text; jSource = rbBf.Checked ? "brewfather" : "rapt";
-            jUser = userBox.Text.Trim(); jSecret = keyBox.Text.Trim();
+            jUser = userBox.Text.Trim(); jSecret = keyBox.Text.Trim(); jAdmin = adminBox.Text.Trim();
+            AdminPass = null; apPass = null;
             if (jSsid == "") { Log("Type your home Wi-Fi name first.", "bad"); return; }
+            if (jAdmin.Length > 32) { Log("The settings password can be up to 32 characters.", "bad"); return; }
             if (jUser == "" || jSecret == "") { Log("Fill in your " + l1.Text + " and " + l2.Text + " first.", "bad"); return; }
             go.Enabled = false; go.Text = "Working... please wait";
             worker = new Thread(() =>
@@ -2933,22 +3431,34 @@ namespace FermFrame
 
         // ---- Wi-Fi switching
 
-        bool JoinOpen(string ssid, int seconds)
+        bool JoinOpen(string ssid, int seconds) { return Join(ssid, null, seconds); }
+
+        // Joins a clock's own Wi-Fi: open (brand-new clocks, FermFrame up to 2.2) or with a password (FermFrame 2.3+)
+        bool Join(string ssid, string pass, int seconds)
         {
             var prof = TmpPrefix + ssid;
+            var sec = pass == null
+                ? "<authEncryption><authentication>open</authentication><encryption>none</encryption><useOneX>false</useOneX></authEncryption>"
+                : "<authEncryption><authentication>WPA2PSK</authentication><encryption>AES</encryption><useOneX>false</useOneX></authEncryption>" +
+                  "<sharedKey><keyType>passPhrase</keyType><protected>false</protected><keyMaterial>" + SecurityElement(pass) + "</keyMaterial></sharedKey>";
             var xml = "<?xml version=\"1.0\"?><WLANProfile xmlns=\"http://www.microsoft.com/networking/WLAN/profile/v1\"><name>" + SecurityElement(prof) +
                 "</name><SSIDConfig><SSID><name>" + SecurityElement(ssid) + "</name></SSID></SSIDConfig><connectionType>ESS</connectionType><connectionMode>manual</connectionMode>" +
-                "<MSM><security><authEncryption><authentication>open</authentication><encryption>none</encryption><useOneX>false</useOneX></authEncryption></security></MSM></WLANProfile>";
+                "<MSM><security>" + sec + "</security></MSM></WLANProfile>";
             var file = Path.Combine(Path.GetTempPath(), "fermframe-profile.xml");
+            if (madeProfiles.Contains(prof)) Wlan.Netsh("delete", "profile", Wlan.Q("name", prof));   // may hold an old password
             File.WriteAllText(file, xml);
-            Wlan.Netsh("add", "profile", Wlan.Q("filename", file), Wlan.Q("interface", iface), "user=current");
-            try { File.Delete(file); } catch { }
+            try { Wlan.Netsh("add", "profile", Wlan.Q("filename", file), Wlan.Q("interface", iface), "user=current"); }
+            finally { try { File.Delete(file); } catch { } }
             if (!madeProfiles.Contains(prof)) madeProfiles.Add(prof);
             var until = DateTime.Now.AddSeconds(seconds);
             var asked = DateTime.MinValue;
             while (DateTime.Now < until)
             {
-                if ((DateTime.Now - asked).TotalSeconds > 8) { asked = DateTime.Now; Wlan.Netsh("connect", Wlan.Q("name", prof), Wlan.Q("ssid", ssid), Wlan.Q("interface", iface)); }
+                // Ask Windows to connect only while it isn't on this network yet: asking again restarts the
+                // connection, and a clock can take 15 seconds or more to hand out an address (DHCP).
+                var now0 = Wlan.GetIface();
+                bool onIt = now0 != null && now0.Connected && now0.Ssid == ssid;
+                if (!onIt && (DateTime.Now - asked).TotalSeconds > 12) { asked = DateTime.Now; Wlan.Netsh("connect", Wlan.Q("name", prof), Wlan.Q("ssid", ssid), Wlan.Q("interface", iface)); }
                 Thread.Sleep(1000);
                 var i = Wlan.GetIface();
                 if (i != null && i.Connected && i.Ssid == ssid && Wlan.IPv4(iface).Any(a => a.StartsWith("192.168.4."))) { Thread.Sleep(1000); return true; }
@@ -2957,6 +3467,62 @@ namespace FermFrame
         }
 
         static string SecurityElement(string s) { return System.Security.SecurityElement.Escape(s); }
+
+        string apPass;   // the FermFrame-Setup password from the clock's screen, once typed
+
+        // Waits for the FermFrame's own Wi-Fi to appear and joins it, asking for the password on its screen if it has one
+        bool JoinSetup(int seconds)
+        {
+            Wlan.Network net = null;
+            var until = DateTime.Now.AddSeconds(seconds);
+            while (net == null && DateTime.Now < until)
+                net = Wlan.GetNetworks().FirstOrDefault(n => n.Ssid == SetupSsid || n.Ssid == OldSetupSsid);
+            if (net == null) return false;
+            bool unknown = net.Auth == "";   // Windows in another language: try without a password first
+            if (net.Open || unknown)
+            {
+                if (JoinOpen(net.Ssid, unknown ? 25 : 45)) return true;
+                if (!unknown) return false;
+            }
+            for (int tries = 0; tries < 3; tries++)
+            {
+                if (apPass == null || tries > 0)
+                {
+                    apPass = AskHotspotPassword(tries > 0);
+                    if (apPass == null) return false;
+                }
+                Log("Joining " + net.Ssid + "...");
+                if (Join(net.Ssid, apPass, 45)) return true;
+            }
+            return false;
+        }
+
+        string AskHotspotPassword(bool again)
+        {
+            var text = (again ? "That didn't work - check the password and try again.\n\n" : "") +
+                "Look at the FermFrame's screen: under the QR code it shows \"Password:\" and 8 letters and numbers. Type them here.";
+            string pw = null;
+            try { pw = (string)Invoke(new Func<string>(() => Prompt.Ask(this, "FermFrame Wi-Fi password", text, ""))); } catch { }
+            return pw == null ? null : Regex.Replace(pw, "\\s", "").ToLowerInvariant();
+        }
+
+        // Runs a request to a FermFrame on the home network; if it has a settings password, asks for it and tries again
+        Resp WithPassword(string baseUrl, Func<Resp> call)
+        {
+            var r = call();
+            var host = new Uri(baseUrl).Host;
+            for (int tries = 0; r.Status == 401 && tries < 3; tries++)
+            {
+                string pw = null;
+                var text = (tries > 0 ? "That password didn't work. " : "") + "This FermFrame's settings have a password. Type it here:";
+                try { pw = (string)Invoke(new Func<string>(() => Prompt.Ask(this, "Settings password", text, "", true))); } catch { }
+                if (pw == null) break;
+                Net.Typed[host] = pw;
+                r = call();
+            }
+            if (r.Status == 200 && Net.Typed.ContainsKey(host)) AdminPass = Net.Typed[host];
+            return r;
+        }
 
         bool RestoreWifi()
         {
@@ -3032,7 +3598,7 @@ namespace FermFrame
             if (UI.Str(info, "build") != "full" || Firmware.IsOlder(UI.Str(info, "version")))
             {
                 Log("Installing the full FermFrame " + Bundled.Version + "...");
-                var r = Net.PostFile(baseUrl + "/update", "firmware", "fermframe.bin", Firmware.Full, 150);
+                var r = WithPassword(baseUrl, () => Net.PostFile(baseUrl + "/update", "firmware", "fermframe.bin", Firmware.Full, 150));
                 if (r.Status != 200)
                 {
                     if (UI.Str(info, "build") != "full") throw new Exception("The full version didn't install (" + r.Status + " " + r.Error + "). Keep the FermFrame near the PC and press Set up my FermFrame again.");
@@ -3042,7 +3608,7 @@ namespace FermFrame
                 {
                     Log("The FermFrame is restarting...");
                     Thread.Sleep(12000);
-                    if (viaHotspot && !JoinOpen(SetupSsid, 90)) throw new Exception("The FermFrame didn't come back after the update. Unplug it, plug it back in and press Set up again.");
+                    if (viaHotspot && !JoinSetup(90)) throw new Exception("The FermFrame didn't come back after the update. Unplug it, plug it back in and press Set up again.");
                     info = null;
                     var until = DateTime.Now.AddSeconds(60);
                     while (info == null && DateTime.Now < until) { info = Net.ClockInfo(baseUrl, 5); if (info == null) Thread.Sleep(2000); }
@@ -3051,8 +3617,16 @@ namespace FermFrame
             }
             Log("Saving your Wi-Fi and account details on the FermFrame...");
             var fields = new Dictionary<string, string> { { "ssid", jSsid }, { "pass", jPass }, { "source", jSource }, { "user", jUser }, { "secret", jSecret }, { "tz", PosixTimeZone() } };
-            var s = Net.PostForm(baseUrl + "/save", fields, 20);
+            if (jAdmin != "") fields["admin"] = jAdmin;
+            var s = WithPassword(baseUrl, () => Net.PostForm(baseUrl + "/save", fields, 20));
+            if (s.Status == 401) throw new Exception("The FermFrame's settings password is needed to change it.");
             if (s.Status != 200) throw new Exception("The FermFrame didn't save the settings (code " + s.Status + ").");
+            if (jAdmin != "")
+            {
+                if (Firmware.Older(UI.Str(info, "version"), "2.3.0"))
+                    Log("This FermFrame's version has no settings password, so none was set. Update it on the Firmware tab, then set one on the Settings tab.", "bad");
+                else AdminPass = jAdmin;
+            }
             Log("Saved. The FermFrame joins your Wi-Fi and shows your brew.", "good");
         }
 
@@ -3094,7 +3668,7 @@ namespace FermFrame
                     FlashStock("http://" + ClockAP, title);
                     Thread.Sleep(10000);
                     Log("Waiting for FermFrame to start...");
-                    if (JoinOpen(SetupSsid, 90)) FinishSetup("http://" + ClockAP, true);
+                    if (JoinSetup(90)) FinishSetup("http://" + ClockAP, true);
                     else
                     {
                         RestoreWifi();
@@ -3107,7 +3681,7 @@ namespace FermFrame
                 else if (setupNet != null)
                 {
                     Log("Found a FermFrame waiting to be set up. This PC will leave your Wi-Fi for a minute.", "step");
-                    if (!JoinOpen(setupNet.Ssid, 45)) throw new Exception("Couldn't connect to the FermFrame's Wi-Fi.");
+                    if (!JoinSetup(45)) throw new Exception("Couldn't connect to the FermFrame's Wi-Fi.");
                     FinishSetup("http://" + ClockAP, true);
                 }
                 else if (lan.Kind == "stock")
@@ -3125,7 +3699,7 @@ namespace FermFrame
                     }
                     if (found is string)
                     {
-                        if (!JoinOpen(SetupSsid, 45)) throw new Exception("Couldn't connect to the FermFrame's Wi-Fi.");
+                        if (!JoinSetup(45)) throw new Exception("Couldn't connect to the FermFrame's Wi-Fi.");
                         FinishSetup("http://" + ClockAP, true);
                     }
                     else if (found != null) FinishSetup(((Found)found).Base, false);

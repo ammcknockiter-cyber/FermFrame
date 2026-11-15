@@ -10,7 +10,7 @@ recognises BrewScreen devices.
 | `src/main.cpp`, `platformio.ini` | The firmware (PlatformIO, Arduino core for ESP8266) |
 | `installer/files/fermframe.bin`, `fermframe-lite.bin` | The built firmware the app embeds |
 | `manager/` | The Windows app (`FermFrameApp.cs`), its build script and the shop list |
-| `installer/` (the `.bat` / `.ps1`) | The original PowerShell installer, replaced by the app; kept for reference |
+| `installer/` (the `.bat` / `.ps1`) | The original PowerShell installer, replaced by the app; kept for reference. It only joins an open setup Wi-Fi, so it can't finish setting up firmware 2.3+ (whose *FermFrame-Setup* has a password) – use the app. |
 | `dist/` | Release files made by the build (not committed) |
 
 ## Firmware

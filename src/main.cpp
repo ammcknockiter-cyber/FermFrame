@@ -6,8 +6,15 @@
 //   * Brewfather   (Brewfather user ID + API key)
 //   * RAPT cloud   (RAPT account email + API secret)
 //
-// Setup: with no Wi-Fi saved, the clock opens the open Wi-Fi "FermFrame-Setup"
-// and shows a QR code to join it; the setup page then pops up on the phone.
+// Setup: with no Wi-Fi saved, the clock opens the Wi-Fi "FermFrame-Setup"
+// (its password is made up on the device and shown on its screen) and shows a
+// QR code to join it; the setup page then pops up on the phone.
+//
+// Security (2.3): an optional settings password protects the settings page,
+// /save and /update (user name "fermframe"). Forgot it? Plug the FermFrame in 3
+// times in a row (each time unplugging within 10 seconds) and it opens setup
+// mode, where the settings can be changed without it - that needs the hotspot
+// password from its screen, so it needs someone standing next to it.
 // Afterwards the settings live at http://fermframe.local/ (or the clock's IP),
 // including "Look & feel": themes, colours, font, brightness, night dimming,
 // graph type/range, rotating pages and the "Ready to keg?" badge, with a live
@@ -96,11 +103,16 @@ struct Config {
   bool pgBrews    = false;
   int  pageSecs   = 10;
   bool keg        = true;       // "Ready to keg?" badge
+  // Security
+  char apPass[12] = "";         // setup hotspot password, made up once on the device
+  char admin[33]  = "";         // optional settings password ("" = none)
 } cfg;
 
 static const char* CONFIG_FILE = "/config.json";
 static const char* AP_NAME     = "FermFrame-Setup";
 static const char* HOSTNAME    = "fermframe";
+static const char* ADMIN_USER  = "fermframe";   // user name for the settings password
+static const char* BOOTS_FILE  = "/boots";      // counts quick plug-ins (forgotten password)
 static const unsigned long SETUP_RETRY_MS = 3UL * 60UL * 1000UL;  // power-cut retry
 
 bool isBrewfather() { return cfg.source[0] != 'r' && cfg.source[0] != 'R'; }
@@ -149,6 +161,8 @@ void loadConfig() {
     cfg.pgBrews = d["pgBrews"] | false;
     cfg.pageSecs = constrain((int)(d["pageSecs"] | 10), 3, 600);
     cfg.keg     = d["keg"] | true;
+    copyStr(d, "apPass", cfg.apPass, sizeof(cfg.apPass), "");
+    copyStr(d, "admin", cfg.admin, sizeof(cfg.admin), "");
   }
   f.close();
 }
@@ -164,6 +178,7 @@ void saveConfig() {
   d["nLevel"] = cfg.nLevel; d["graph"] = cfg.graph; d["plot"] = cfg.plot; d["range"] = cfg.rangeH;
   d["pgGraph"] = cfg.pgGraph; d["pgBig"] = cfg.pgBig; d["pgClock"] = cfg.pgClock; d["pgBrews"] = cfg.pgBrews;
   d["pageSecs"] = cfg.pageSecs; d["keg"] = cfg.keg;
+  d["apPass"] = cfg.apPass; d["admin"] = cfg.admin;
   File f = LittleFS.open(CONFIG_FILE, "w");
   if (f) { serializeJson(d, f); f.close(); }
 }
@@ -176,7 +191,41 @@ ESP8266HTTPUpdateServer updater;
 DNSServer dns;
 
 bool setupMode = false;
+bool forcedSetup = false;    // setup mode opened by plugging in 3 times (not a Wi-Fi problem)
+bool bootsPending = false;   // the plug-in counter still needs clearing
+int plugInsAtBoot = 0;       // what the counter said this time (shown in /fermframe.json)
 unsigned long setupSince = 0, lastWebHit = 0, restartAt = 0;
+
+// The settings page, /save and /update need the settings password, if one is set.
+// Setup mode never asks: getting into it needs the hotspot password from the screen.
+bool allowed() {
+  if (setupMode || !cfg.admin[0]) return true;
+  if (server.authenticate(ADMIN_USER, cfg.admin)) return true;
+  server.requestAuthentication(BASIC_AUTH, "FermFrame",
+    F("<p>This FermFrame's settings have a password. User name: fermframe.</p>"
+      "<p>Forgot it? Unplug the FermFrame and plug it back in 3 times in a row (unplug each time within 10 seconds), then join the Wi-Fi shown on its screen.</p>"));
+  return false;
+}
+
+// Makes up the setup hotspot's password: 8 letters/digits that are hard to mix up
+void makeApPass() {
+  static const char A[] = "abcdefghjkmnpqrstuvwxyz23456789";
+  for (int i = 0; i < 8; i++) cfg.apPass[i] = A[ESP.random() % (sizeof(A) - 1)];
+  cfg.apPass[8] = 0;
+}
+
+// Counts plug-ins that happen within ~10 seconds of each other
+int countPlugIns() {
+  uint32 why = ESP.getResetInfoPtr()->reason;
+  if (why != REASON_DEFAULT_RST && why != REASON_EXT_SYS_RST) { LittleFS.remove(BOOTS_FILE); return 0; }
+  int n = 0;
+  File f = LittleFS.open(BOOTS_FILE, "r");
+  if (f) { n = f.parseInt(); f.close(); }
+  f = LittleFS.open(BOOTS_FILE, "w");
+  if (f) { f.print(n + 1); f.close(); }
+  bootsPending = true;
+  return n + 1;
+}
 String netOptions;
 
 bool needRefresh = true;
@@ -669,13 +718,14 @@ void drawQR(const String& text, int cx, int y, int scale) {
 }
 
 void drawCard(const char* title, uint16_t titleColor, const String& qr,
-              const String& l1, const String& l2 = "", const String& l3 = "") {
+              const String& l1, const String& l2 = "", const String& l3 = "", const String& l4 = "") {
   tft.fillScreen(C_BG);
   drawSmall(title, 120, 4, TC_DATUM, titleColor, 4);
   int y = 40;
   if (qr.length()) { drawQR(qr, 120, 42, 4); y = 42 + 29 * 4 + 12; }
-  const String* ls[] = {&l1, &l2, &l3};
-  for (auto l : ls) { if (l->length()) { drawSmall(*l, 120, y, TC_DATUM, C_TEXT); y += 20; } }
+  int gap = l4.length() ? 17 : 20;   // four lines only just fit under the QR code
+  const String* ls[] = {&l1, &l2, &l3, &l4};
+  for (auto l : ls) { if (l->length()) { drawSmall(*l, 120, y, TC_DATUM, C_TEXT); y += gap; } }
 }
 
 void drawMessage(const char* title, const String& l1, const String& l2 = "", const String& l3 = "") {
@@ -925,12 +975,15 @@ void drawCurrentPage() {
 }
 
 void showSetupScreen() {
-  if (cfg.ssid[0])
-    drawCard("Can't find Wi-Fi", C_ERR, "WIFI:T:nopass;S:" + String(AP_NAME) + ";;",
-             String("Looking for: ") + cfg.ssid, "Retrying soon. To change it,", "scan with your phone camera");
+  String qr = "WIFI:T:WPA;S:" + String(AP_NAME) + ";P:" + cfg.apPass + ";;";
+  String pw = String("Password: ") + cfg.apPass;
+  // The phone isn't on the home Wi-Fi now, so the usual address won't work: show the setup one
+  if (cfg.ssid[0] && !forcedSetup)
+    drawCard("Can't find Wi-Fi", C_ERR, qr,
+             String("Looking for: ") + cfg.ssid, "Retrying soon. To change it, scan", pw, "then open 192.168.4.1");
   else
-    drawCard("Set me up!", C_SG, "WIFI:T:nopass;S:" + String(AP_NAME) + ";;",
-             "Scan with your phone camera", String("or join Wi-Fi ") + AP_NAME, "then fill in the page");
+    drawCard(forcedSetup ? "Setup mode" : "Set me up!", C_SG, qr,
+             String("Scan, or join ") + AP_NAME, pw, "The page opens by itself, or", "open 192.168.4.1 in a browser");
 }
 
 void showAccountNeeded() {
@@ -1035,6 +1088,7 @@ void addCheck(Chunker& c, const char* name, const __FlashStringHelper* label, bo
 
 void handleRoot() {
   lastWebHit = millis();
+  if (!allowed()) return;
   server.setContentLength(CONTENT_LENGTH_UNKNOWN);
   server.send(200, "text/html", "");
   Chunker c;
@@ -1126,7 +1180,16 @@ void handleRoot() {
   }
   c.add(F("</select><label>Check for new readings every (minutes)</label><input name=refresh type=number min=1 max=120 value="));
   c.add(String(cfg.refreshMin));
-  c.add(F("><p><a href=/update>Install new firmware</a></p></details><button>Save</button></form>"));
+  c.add(F("><p><a href=/update>Install new firmware</a></p></details>"));
+
+  // ---- Settings password ----
+  c.add(F("<h2>Settings password (optional)</h2><small>Stops anyone else on your Wi-Fi from changing these settings or installing other firmware. "
+          "User name: <b>fermframe</b>. Forgot it? Plug the FermFrame in 3 times in a row (unplug each time within 10 seconds) to open setup mode.</small>"
+          "<input name=admin type=password autocomplete=new-password maxlength=32 placeholder=\""));
+  c.add(cfg.admin[0] ? F("(set - leave blank to keep)") : F("no password"));
+  c.add("\">");
+  if (cfg.admin[0]) { c.add(F("<div class=k>")); addCheck(c, "adminOff", F("Remove the password"), false); c.add(F("</div>")); }
+  c.add(F("<button>Save</button></form>"));
 #ifndef FERMFRAME_LITE
   c.addP(PAGE_JS);
 #else
@@ -1159,6 +1222,7 @@ void copyColour(const char* name, char* dst) {
 
 void handleSave() {
   lastWebHit = millis();
+  if (!allowed()) return;
   String oldSsid = cfg.ssid, oldPass = cfg.pass;
 
   copyArg("ssid", cfg.ssid, sizeof(cfg.ssid), false);
@@ -1192,7 +1256,10 @@ void handleSave() {
     cfg.pageSecs = argInt("pageSecs", cfg.pageSecs, 3, 600);
     cfg.keg = server.hasArg("keg");
   }
+  if (server.hasArg("adminOff")) cfg.admin[0] = 0;
+  else copyArg("admin", cfg.admin, sizeof(cfg.admin), true);
   saveConfig();
+  if (!setupMode) updater.updateCredentials(ADMIN_USER, cfg.admin);
 
   bool wifiChanged = setupMode || oldSsid != cfg.ssid || oldPass != cfg.pass;
   String p; p += FPSTR(PAGE_HEAD);
@@ -1237,10 +1304,21 @@ void handleInfo() {
   j += html(cfg.ssid);
   j += F("\",\"account\":");
   j += hasAccount() ? F("true") : F("false");
+  j += F(",\"locked\":");    // a settings password is set (never the password itself)
+  j += (cfg.admin[0] && !setupMode) ? F("true") : F("false");
   j += F(",\"problem\":\"");
   j += html(lastError.c_str());
   j += F("\",\"heap\":");
   j += ESP.getFreeHeap();
+  j += F(",\"up\":");        // seconds since it started, and why it started (for troubleshooting)
+  j += millis() / 1000;
+  j += F(",\"reset\":");
+  j += ESP.getResetInfoPtr()->reason;
+  j += F(",\"plugins\":");
+  j += plugInsAtBoot;
+#ifdef FERMFRAME_TEST
+  j += F(",\"testApPass\":\""); j += cfg.apPass; j += F("\"");
+#endif
   j += F(",\"readings\":");
   j += cur.count;
   j += F(",\"brews\":");
@@ -1288,8 +1366,16 @@ void startWebServer() {
   server.on("/fermframe.json", HTTP_GET, handleInfo);
   server.on("/brewscreen.json", HTTP_GET, handleInfo);   // name before FermFrame
   server.on("/graph.json", HTTP_GET, handleGraph);
+#ifdef FERMFRAME_TEST
+  server.on("/test-setup", HTTP_POST, []() {
+    File f = LittleFS.open("/test-setup", "w"); if (f) { f.print(1); f.close(); }
+    server.send(200, "text/plain", "restarting into setup mode");
+    restartAt = millis() + 1000;
+  });
+#endif
   server.onNotFound(handleNotFound);
-  updater.setup(&server, "/update");
+  if (setupMode) updater.setup(&server, "/update");
+  else updater.setup(&server, "/update", ADMIN_USER, cfg.admin);   // no password set = open, as before
   server.begin();
 }
 
@@ -1316,7 +1402,7 @@ void startSetupMode() {
   WiFi.mode(WIFI_AP);
   IPAddress ip(192, 168, 4, 1);
   WiFi.softAPConfig(ip, ip, IPAddress(255, 255, 255, 0));
-  WiFi.softAP(AP_NAME);
+  WiFi.softAP(AP_NAME, cfg.apPass);
   dns.start(53, "*", ip);
   startWebServer();
   setupSince = lastWebHit = millis();
@@ -1346,11 +1432,24 @@ void setup() {
 
   if (!LittleFS.begin()) { LittleFS.format(); LittleFS.begin(); }
   loadConfig();
+  if (strlen(cfg.apPass) < 8) { makeApPass(); saveConfig(); }
+  int plugIns = plugInsAtBoot = countPlugIns();
+#ifdef FERMFRAME_TEST   // test builds only (never published): /test-setup restarts into setup mode
+  if (LittleFS.exists("/test-setup")) { LittleFS.remove("/test-setup"); plugIns = 3; }
+#endif
   applyColours();
 
   tft.init();
   tft.setRotation(0);
   drawMessage("FermFrame", "Starting...");
+
+  // Plugged in 3 times in a row: setup mode, without the settings password
+  if (plugIns >= 3) {
+    LittleFS.remove(BOOTS_FILE); bootsPending = false;
+    forcedSetup = true;
+    startSetupMode();
+    return;
+  }
 
   // Wi-Fi saved by an earlier version / other firmware: take it over
   if (!cfg.ssid[0] && WiFi.SSID().length()) {
@@ -1378,6 +1477,7 @@ void loop() {
   server.handleClient();
   unsigned long now = millis();
   if (restartAt && (long)(now - restartAt) > 0) ESP.restart();
+  if (bootsPending && now > 10000) { LittleFS.remove(BOOTS_FILE); bootsPending = false; }
 
   if (setupMode) {
     dns.processNextRequest();
