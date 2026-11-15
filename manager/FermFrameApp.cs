@@ -30,16 +30,16 @@ using System.Windows.Forms;
 [assembly: AssemblyTitle("FermFrame")]
 [assembly: AssemblyProduct("FermFrame")]
 [assembly: AssemblyDescription("Look after your FermFrames")]
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
-[assembly: AssemblyInformationalVersion("1.0.0")]
+[assembly: AssemblyVersion("1.0.1.0")]
+[assembly: AssemblyFileVersion("1.0.1.0")]
+[assembly: AssemblyInformationalVersion("1.0.1")]
 [assembly: AssemblyCopyright("MIT licence - see LICENSE")]
 
 namespace FermFrame
 {
     static class AppInfo
     {
-        public const string Version = "1.0.0";   // keep in step with the assembly versions above
+        public const string Version = "1.0.1";   // keep in step with the assembly versions above
     }
 
     static class Program
@@ -51,6 +51,9 @@ namespace FermFrame
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.ThreadException += (s, e) => MessageBox.Show("Something went wrong:\n\n" + e.Exception.Message, "FermFrame", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            // Modern HTTPS for GitHub (updates, shop list): this kind of app otherwise starts with old protocols only
+            try { ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072; } catch { }          // TLS 1.2
+            try { ServicePointManager.SecurityProtocol |= (SecurityProtocolType)12288; } catch { }         // TLS 1.3
 
             var a = args.Select(x => x.ToLowerInvariant()).ToList();
             if (a.Contains("/demo"))
@@ -210,6 +213,112 @@ namespace FermFrame
                 catch { }
             }
             if (!quiet) MessageBox.Show("FermFrame has been removed.", "Uninstall FermFrame", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+    }
+
+    // ------------------------------------------------------------------ app preferences (this PC only)
+
+    class AppSettings
+    {
+        public bool AutoUpdate = true;
+        public DateTime LastCheck = DateTime.MinValue;
+
+        static string File_ { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "FermFrame", "app.json"); } }
+
+        public static AppSettings Load()
+        {
+            try { if (File.Exists(File_)) return Net.FromJson<AppSettings>(File.ReadAllText(File_)) ?? new AppSettings(); } catch { }
+            return new AppSettings();
+        }
+
+        public void Save()
+        {
+            if (Demo.On) return;
+            try { Directory.CreateDirectory(Path.GetDirectoryName(File_)); File.WriteAllText(File_, Net.ToJson(this)); } catch { }
+        }
+    }
+
+    // ------------------------------------------------------------------ updates from the GitHub releases page
+
+    static class Updater
+    {
+        public class Release { public string Version = "", Page = "", ExeUrl = "", ShaUrl = "", Notes = ""; }
+
+        // FERMFRAME_UPDATE_FEED points at a test copy of GitHub's answer (a file:// or https:// address)
+        static string TestFeed { get { return Environment.GetEnvironmentVariable("FERMFRAME_UPDATE_FEED") ?? ""; } }
+
+        static string Feed
+        {
+            get
+            {
+                if (TestFeed != "") return TestFeed;
+                var m = Regex.Match(Bundled.ProjectUrl, "github\\.com/([^/]+)/([^/?#]+)");
+                return m.Success ? "https://api.github.com/repos/" + m.Groups[1].Value + "/" + m.Groups[2].Value + "/releases/latest" : "";
+            }
+        }
+
+        public static bool Available { get { return Feed != "" && !Demo.On; } }
+
+        static readonly HttpClient web = MakeClient();
+        static HttpClient MakeClient()
+        {
+            var h = new HttpClientHandler(); h.UseProxy = true;
+            var c = new HttpClient(h); c.Timeout = TimeSpan.FromMinutes(3);
+            c.DefaultRequestHeaders.UserAgent.ParseAdd("FermFrame/" + AppInfo.Version);
+            return c;
+        }
+
+        static byte[] Fetch(string url)
+        {
+            if (url.StartsWith("file:", StringComparison.OrdinalIgnoreCase)) return File.ReadAllBytes(new Uri(url).LocalPath);
+            var r = web.GetAsync(url).Result;
+            if (!r.IsSuccessStatusCode) throw new Exception("GitHub said " + (int)r.StatusCode + " " + r.ReasonPhrase);
+            return r.Content.ReadAsByteArrayAsync().Result;
+        }
+
+        // The latest release, or null if there's nothing newer than this app
+        public static Release Check()
+        {
+            var j = Net.Json(Encoding.UTF8.GetString(Fetch(Feed)).TrimStart('﻿'));
+            if (j == null) throw new Exception("Couldn't read the release information.");
+            var rel = new Release { Version = UI.Str(j, "tag_name").TrimStart('v', 'V'), Page = UI.Str(j, "html_url"), Notes = UI.Str(j, "body") };
+            if (!Firmware.Older(AppInfo.Version, rel.Version)) return null;
+            object a;
+            if (j.TryGetValue("assets", out a) && a is object[])
+                foreach (var o in (object[])a)
+                {
+                    var d = o as Dictionary<string, object>; if (d == null) continue;
+                    var name = UI.Str(d, "name"); var url = UI.Str(d, "browser_download_url");
+                    if (name.Equals("FermFrame-" + rel.Version + ".exe", StringComparison.OrdinalIgnoreCase)) rel.ExeUrl = url;
+                    if (name.Equals("FermFrame-" + rel.Version + ".exe.sha256", StringComparison.OrdinalIgnoreCase)) rel.ShaUrl = url;
+                }
+            return rel;
+        }
+
+        // Downloads the new version, checks it is exactly the published file, and starts its installer.
+        // The installer closes this copy, replaces it and opens the new one.
+        public static void Install(Release rel, Action<string> say)
+        {
+            if (rel.ExeUrl == "" || rel.ShaUrl == "") throw new Exception("This release has no FermFrame download yet. Try again later, or download it from the project page.");
+            say("Downloading FermFrame " + rel.Version + "...");
+            var bytes = Fetch(rel.ExeUrl);
+            var expect = Regex.Match(Encoding.ASCII.GetString(Fetch(rel.ShaUrl)), "[0-9a-fA-F]{64}").Value.ToLowerInvariant();
+            string got;
+            using (var sha = System.Security.Cryptography.SHA256.Create()) got = string.Concat(sha.ComputeHash(bytes).Select(b => b.ToString("x2")));
+            if (expect == "" || got != expect) throw new Exception("The download didn't match its published checksum, so it wasn't installed. Try again later.");
+            if (bytes.Length < 2 || bytes[0] != 'M' || bytes[1] != 'Z') throw new Exception("The download isn't a Windows program, so it wasn't installed.");
+
+            var dir = Path.Combine(Path.GetTempPath(), "FermFrame-update");
+            Directory.CreateDirectory(dir);
+            var exe = Path.Combine(dir, "FermFrame-" + rel.Version + ".exe");
+            File.WriteAllBytes(exe, bytes);
+            var vi = FileVersionInfo.GetVersionInfo(exe);
+            if (vi.ProductName != "FermFrame") { try { File.Delete(exe); } catch { } throw new Exception("The download isn't FermFrame, so it wasn't installed."); }
+
+            say("Installing...");
+            bool desktop = File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "FermFrame.lnk"));
+            var args = "/install" + (desktop ? "" : " /nodesktop");
+            Process.Start(new ProcessStartInfo(exe, args) { UseShellExecute = false, WorkingDirectory = dir });
         }
     }
 
@@ -514,6 +623,7 @@ namespace FermFrame
         {
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
             FlatStyle = FlatStyle.Flat; FlatAppearance.BorderSize = 0; UseVisualStyleBackColor = false; Cursor = Cursors.Hand;
+            AccessibleRole = AccessibleRole.PushButton;   // custom drawing hides this from screen readers otherwise
         }
 
         protected override void OnMouseEnter(EventArgs e) { hover = true; Invalidate(); base.OnMouseEnter(e); }
@@ -590,6 +700,7 @@ namespace FermFrame
         {
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint, true);
             Cursor = Cursors.Hand;
+            AccessibleRole = AccessibleRole.CheckButton;
         }
         protected override void OnPaint(PaintEventArgs e) { Tick.Paint(this, e.Graphics, Checked, false, ShowFocusCues); }
         public override Size GetPreferredSize(Size p) { return Tick.Size(this); }
@@ -601,6 +712,7 @@ namespace FermFrame
         {
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint, true);
             Cursor = Cursors.Hand;
+            AccessibleRole = AccessibleRole.RadioButton;
         }
         protected override void OnPaint(PaintEventArgs e) { Tick.Paint(this, e.Graphics, Checked, true, ShowFocusCues); }
         public override Size GetPreferredSize(Size p) { return Tick.Size(this); }
@@ -661,7 +773,7 @@ namespace FermFrame
         public Slider()
         {
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.Selectable, true);
-            TabStop = true; Cursor = Cursors.Hand; Height = 32;
+            TabStop = true; Cursor = Cursors.Hand; Height = 32; AccessibleRole = AccessibleRole.Slider; AccessibleName = "Brightness";
         }
 
         float R { get { return UI.Pf(9); } }
@@ -1340,7 +1452,7 @@ namespace FermFrame
             list.ItemHeight = UI.Px(70);
 
             timer = new System.Windows.Forms.Timer { Interval = 60000 };
-            timer.Tick += (s, e) => Poll(false);
+            timer.Tick += (s, e) => { Poll(false); CheckForUpdate(null); };
             timer.Start();
 
             Shown += (s, e) =>
@@ -1349,10 +1461,93 @@ namespace FermFrame
                 if (clocks.Count > 0) list.SelectedIndex = 0;
                 ShowClock();
                 Poll(clocks.Count == 0);
+                CheckForUpdate(null);
             };
         }
 
         Clock Sel { get { return list.SelectedIndex >= 0 && list.SelectedIndex < clocks.Count ? clocks[list.SelectedIndex] : null; } }
+
+        // ---------------- updates
+
+        public AppSettings Prefs = AppSettings.Load();
+        Panel updateBar;
+        Label updTitle, updSub;
+        Button updGo, updNotes, updLater;
+        Updater.Release pending;
+        bool checking, laterThisRun;
+
+        // Asks GitHub for a newer version: automatically (done == null, at most once a day) or from About ("Check now")
+        public void CheckForUpdate(Action<string> done)
+        {
+            if (!Updater.Available || checking) { if (done != null) done(Updater.Available ? "Already checking..." : "Update checks aren't available in this copy."); return; }
+            bool test = (Environment.GetEnvironmentVariable("FERMFRAME_UPDATE_FEED") ?? "") != "";
+            if (done == null && (!Prefs.AutoUpdate || (!test && (DateTime.Now - Prefs.LastCheck).TotalHours < 20))) return;
+            checking = true;
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                Updater.Release rel = null; string err = null;
+                try { rel = Updater.Check(); } catch (Exception ex) { err = ex.GetBaseException().Message; }
+                BeginInvoke(new Action(() =>
+                {
+                    checking = false;
+                    if (err == null) { Prefs.LastCheck = DateTime.Now; Prefs.Save(); }
+                    if (rel != null) { pending = rel; if (done != null || !laterThisRun) ShowUpdateBar(); }
+                    if (done != null) done(err != null ? "Couldn't check for updates: " + err
+                        : rel != null ? "FermFrame " + rel.Version + " is available - see the bar at the top of the window."
+                        : "You have the latest version (" + AppInfo.Version + ").");
+                }));
+            });
+        }
+
+        void BuildUpdateBar()
+        {
+            updateBar = new Panel { Dock = DockStyle.Top, Height = 84, Padding = new Padding(0, 0, 0, 14), Visible = false };
+            var card = new Card { Dock = DockStyle.Fill, Padding = new Padding(18, 0, 14, 0) };
+            var accent = new Panel { Location = new Point(0, 18), Size = new Size(4, 34), BackColor = UI.Amber };
+            updTitle = UI.Lbl("", 11, true); updTitle.Location = new Point(18, 12);
+            updSub = UI.Lbl("", 9, false, UI.Dim); updSub.Location = new Point(19, 34); updSub.AutoSize = false; updSub.Size = new Size(300, 34);
+            var btns = new FlowLayoutPanel { Dock = DockStyle.Right, FlowDirection = FlowDirection.RightToLeft, WrapContents = false, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(0, 16, 0, 0) };
+            card.Resize += (s, e) => { updSub.Width = Math.Max(UI.Px(120), card.ClientSize.Width - btns.Width - updSub.Left - UI.Px(16)); updTitle.MaximumSize = new Size(updSub.Width, 0); };
+            updLater = UI.Btn("Later"); updLater.Margin = new Padding(8, 0, 0, 0);
+            updNotes = UI.Btn("What's new"); updNotes.Margin = new Padding(8, 0, 0, 0);
+            updGo = UI.Btn("Update now", true); updGo.Margin = new Padding(8, 0, 0, 0);
+            btns.Controls.AddRange(new Control[] { updLater, updNotes, updGo });
+            card.Controls.AddRange(new Control[] { btns, accent, updTitle, updSub });
+            updateBar.Controls.Add(card);
+            updLater.Click += (s, e) => { laterThisRun = true; updateBar.Visible = false; };
+            updNotes.Click += (s, e) => { if (pending != null && pending.Page.StartsWith("https://")) try { Process.Start(pending.Page); } catch { } };
+            updGo.Click += (s, e) => RunUpdate();
+        }
+
+        void ShowUpdateBar()
+        {
+            if (pending == null) return;
+            updTitle.Text = "FermFrame " + pending.Version + " is available";
+            updSub.Text = "You have " + AppInfo.Version + ". Updating takes a few seconds and keeps your FermFrames and names.";
+            updSub.ForeColor = UI.Dim;
+            updGo.Enabled = updNotes.Enabled = updLater.Enabled = true;
+            updateBar.Visible = true;
+        }
+
+        void RunUpdate()
+        {
+            var rel = pending; if (rel == null) return;
+            updGo.Enabled = updNotes.Enabled = updLater.Enabled = false;
+            Action<string> say = t => BeginInvoke(new Action(() => { updSub.Text = t; updSub.ForeColor = UI.Dim; }));
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
+                {
+                    Updater.Install(rel, say);
+                    say("Installing FermFrame " + rel.Version + " - the app restarts in a moment.");   // the installer closes this window
+                }
+                catch (Exception ex)
+                {
+                    var msg = ex.GetBaseException().Message;
+                    BeginInvoke(new Action(() => { updSub.Text = msg; updSub.ForeColor = UI.Bad; updGo.Enabled = updNotes.Enabled = updLater.Enabled = true; }));
+                }
+            });
+        }
 
         // ---------------- left side: the clocks
 
@@ -1383,7 +1578,7 @@ namespace FermFrame
             add.Click += (s, e) => OpenSetup();
             status = UI.Lbl("", 9, false, UI.Dim); status.AutoSize = false; status.Size = new Size(256, 36);
             var about = new LinkLabel { Text = "About FermFrame " + AppInfo.Version, AutoSize = true, Font = UI.F(9), LinkColor = UI.Dim, ActiveLinkColor = UI.Amber, VisitedLinkColor = UI.Dim, LinkBehavior = LinkBehavior.HoverUnderline, Margin = new Padding(3, 0, 0, 0) };
-            about.LinkClicked += (s, e) => { using (var f = new AboutForm()) f.ShowDialog(this); };
+            about.LinkClicked += (s, e) => { using (var f = new AboutForm(this)) f.ShowDialog(this); };
             bottom.Controls.AddRange(new Control[] { find, buy, add, status, about });
 
             side.Controls.Add(list);
@@ -1475,6 +1670,8 @@ namespace FermFrame
             right.Controls.Add(strip);
             right.Controls.Add(head);
             right.Controls.Add(empty);
+            BuildUpdateBar();
+            right.Controls.Add(updateBar);   // added last, so it sits above everything else
             content.BringToFront();
             Controls.Add(right);
             right.BringToFront();
@@ -1501,7 +1698,7 @@ namespace FermFrame
             var c = Sel;
             bool any = c != null;
             empty.Visible = !any;
-            foreach (Control x in right.Controls) if (x != empty) x.Visible = any;
+            foreach (Control x in right.Controls) if (x != empty && x != updateBar) x.Visible = any;
             if (!any) return;
             title.Text = c.Name;
             subtitle.Text = !c.Online ? "Not answering" + (c.Ip != "" ? " at " + c.Ip : "") + ". Check it's plugged in, then press Find my FermFrames."
@@ -2324,11 +2521,11 @@ namespace FermFrame
     // Version, licence, no-warranty note and the licences of the parts FermFrame is built from
     class AboutForm : DarkForm
     {
-        public AboutForm()
+        public AboutForm(MainForm main = null)
         {
             Text = "About FermFrame";
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
-            ClientSize = new Size(620, 640);
+            ClientSize = new Size(620, 700);
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.FixedSingle; MaximizeBox = false; MinimizeBox = false;
 
@@ -2338,18 +2535,36 @@ namespace FermFrame
                 "Free, open-source software under the MIT licence.\n\n" +
                 "No warranty: FermFrame is provided as it is. Installing firmware on a device is at your own risk and can stop it working.\n\n" +
                 "Not made by or connected with GeekMagic, Brewfather or RAPT; their names belong to their owners.\n\n" +
-                "The app only talks to FermFrames on your own network" + (Bundled.ShopsUrl != "" ? " and fetches the shop list from the FermFrame project page" : "") +
+                "The app only talks to FermFrames on your own network" + (Bundled.ShopsUrl != "" ? ", fetches the shop list from the FermFrame project page" : "") +
+                (Updater.Available ? " and, if you allow it below, checks the project page for a new version once a day" : "") +
                 ". Your FermFrames fetch your readings from Brewfather or RAPT.", 10, false, UI.Text);
             body.Location = new Point(26, 100); body.MaximumSize = new Size(570, 0);
             Controls.AddRange(new Control[] { logo, ver, body });
 
-            var head = UI.Lbl("Built with", 11, true, UI.Amber); head.Location = new Point(26, 300);
-            var box = new RichTextBox { ReadOnly = true, BorderStyle = BorderStyle.None, BackColor = UI.Card, ForeColor = UI.Text, Font = UI.F(9), Location = new Point(26, 330), Size = new Size(568, 230), DetectUrls = false };
+            // Updates
+            var auto = UI.Check("Check for new versions automatically (once a day)");
+            auto.Location = new Point(24, 316); auto.Checked = main == null || main.Prefs.AutoUpdate; auto.Enabled = main != null && Updater.Available;
+            var now = UI.Btn("Check now"); now.Location = new Point(24, 352); now.Enabled = main != null && Updater.Available;
+            var result = UI.Lbl(Updater.Available ? "" : "Update checks aren't available in this copy.", 9.5f, false, UI.Dim);
+            result.Location = new Point(150, 362); result.MaximumSize = new Size(450, 0);
+            if (main != null)
+            {
+                auto.CheckedChanged += (s, e) => { main.Prefs.AutoUpdate = auto.Checked; main.Prefs.Save(); };
+                now.Click += (s, e) =>
+                {
+                    now.Enabled = false; result.Text = "Checking..."; result.ForeColor = UI.Dim;
+                    main.CheckForUpdate(msg => { if (IsDisposed) return; result.Text = msg; result.ForeColor = msg.StartsWith("Couldn't") ? UI.Bad : UI.Text; now.Enabled = true; });
+                };
+            }
+            Controls.AddRange(new Control[] { auto, now, result });
+
+            var head = UI.Lbl("Built with", 11, true, UI.Amber); head.Location = new Point(26, 410);
+            var box = new RichTextBox { ReadOnly = true, BorderStyle = BorderStyle.None, BackColor = UI.Card, ForeColor = UI.Text, Font = UI.F(9), Location = new Point(26, 440), Size = new Size(568, 180), DetectUrls = false };
             box.Text = Resource("THIRD-PARTY-NOTICES.txt");
             Native.DarkScroll(box);
             Controls.AddRange(new Control[] { head, box });
 
-            var row = new FlowLayoutPanel { Location = new Point(24, 580), Size = new Size(580, 46), WrapContents = false };
+            var row = new FlowLayoutPanel { Location = new Point(24, 640), Size = new Size(580, 46), WrapContents = false };
             if (Bundled.ProjectUrl != "")
             {
                 var site = UI.Btn("Project page", true); site.Click += (s, e) => { try { Process.Start(Bundled.ProjectUrl); } catch { } };

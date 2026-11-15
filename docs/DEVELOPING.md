@@ -86,3 +86,10 @@ Optional one-line files next to `build.ps1`:
 
 Testing tip: set `FERMFRAME_SCALE=1.5` to make the app draw as it would on a 150% display.
 Run with `/portable` to skip the install window, or `/demo` for made-up FermFrames (used for the manual and video: nothing real is contacted or saved).
+
+### Updates
+
+The app asks `https://api.github.com/repos/<owner>/<repo>/releases/latest` (from `project-url.txt`) once a day. It only offers
+a release whose tag (`v1.0.2`) is newer than `AppInfo.Version` **and** that has the assets `FermFrame-<version>.exe` and
+`FermFrame-<version>.exe.sha256` – the download must match that checksum. Testing: set `FERMFRAME_UPDATE_FEED` to a
+`file:///` or `https://` copy of GitHub's JSON whose `browser_download_url`s point at test files.

@@ -1,6 +1,6 @@
 # FermFrame user manual
 
-*For FermFrame app 1.0 and FermFrame firmware 2.2. The pictures use made-up FermFrames ("Garage fridge",
+*For FermFrame app 1.0.1 and FermFrame firmware 2.2. The pictures use made-up FermFrames ("Garage fridge",
 "Brew closet" and "Kitchen") – yours will show your own names and brews.*
 
 *Prefer watching? There's a 3-minute [video guide on YouTube](https://youtu.be/npmeVGuBcoU).*
@@ -462,8 +462,9 @@ see or update that clock.
 
 ## 15. Privacy and security
 
-- The **app** talks only to FermFrames on your home network, and fetches the shop list from the FermFrame project on
-  GitHub. It doesn't collect, send or share anything about you.
+- The **app** talks only to FermFrames on your home network, fetches the shop list from the FermFrame project on
+  GitHub and, once a day, asks GitHub whether there's a new version (switch it off in **About**). It doesn't collect,
+  send or share anything about you.
 - Each **FermFrame** stores your Wi-Fi password and Brewfather/RAPT key on itself and contacts only Brewfather or
   RAPT (for readings) and internet time servers (for the clock).
 - The connection to Brewfather and RAPT is encrypted, but the FermFrame doesn't check certificates (it hasn't enough
@@ -475,12 +476,14 @@ see or update that clock.
 
 ## 16. Updating and removing the app
 
-**Updating:** download the new `FermFrame-<version>.exe` from the
-[Releases page](https://github.com/ammcknockiter-cyber/FermFrame/releases/latest), open it and click **Update**. Your
-FermFrame names are kept. If the new version has new firmware, the **Firmware** tab then offers to update your
-FermFrames.
+**Updating:** from version 1.0.1 the app checks for a new version once a day. When there is one, a bar appears at the top of
+the window: click **Update now**. It downloads the new version from the project page, checks it's exactly the published file,
+installs it and reopens – your FermFrames and their names are kept. **What's new** shows the release notes; **Later**
+hides the bar until you next open the app. In **About** you can switch the daily check off or click **Check now**.
 
-Tip: on the GitHub page, click **Watch → Custom → Releases** to get an email when there's a new version.
+If you have version 1.0.0, download the latest `FermFrame-<version>.exe` from the
+[Releases page](https://github.com/ammcknockiter-cyber/FermFrame/releases/latest) once, open it and click **Update**.
+If the new version has new firmware, the **Firmware** tab then offers to update your FermFrames.
 
 **Removing:** Windows **Settings → Apps → Installed apps → FermFrame → Uninstall**. It asks whether to also forget
 your FermFrame names. Your FermFrames keep working.

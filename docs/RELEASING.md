@@ -38,7 +38,8 @@ Share the link to the Releases page (`https://github.com/YOUR-NAME/FermFrame/rel
 2. Rebuild with `build.ps1 -Release`, run `prepare-github.ps1`, upload the changed files, and create a new release with the new
    `dist\FermFrame-<version>.exe`.
 
-People who already have the app just download the new one and press **Update**.
+Keep the file names exactly `FermFrame-<version>.exe` and `FermFrame-<version>.exe.sha256` and the tag `v<version>`:
+from 1.0.1 on, everyone's app finds the release by those names, checks the checksum and offers **Update now**.
 
 ## Changing the shop links
 

@@ -52,8 +52,8 @@ the QR code on its screen.
 
 ## Privacy and security
 
-- The app talks only to FermFrames on your own network (and, if set, fetches the shop list from this project).
-  It doesn't collect or send anything about you.
+- The app talks only to FermFrames on your own network, fetches the shop list from this project and, once a day, asks
+  GitHub whether there's a newer version (you can switch this off in **About**). It doesn't collect or send anything about you.
 - Each FermFrame stores your Wi-Fi password and Brewfather/RAPT key on itself and fetches your readings from
   Brewfather or RAPT every few minutes.
 - The connection to Brewfather/RAPT is encrypted, but certificates aren't checked (the ESP8266 has too little
