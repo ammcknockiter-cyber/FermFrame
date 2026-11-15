@@ -30,16 +30,16 @@ using System.Windows.Forms;
 [assembly: AssemblyTitle("FermFrame")]
 [assembly: AssemblyProduct("FermFrame")]
 [assembly: AssemblyDescription("Look after your FermFrames")]
-[assembly: AssemblyVersion("1.0.1.0")]
-[assembly: AssemblyFileVersion("1.0.1.0")]
-[assembly: AssemblyInformationalVersion("1.0.1")]
+[assembly: AssemblyVersion("1.0.2.0")]
+[assembly: AssemblyFileVersion("1.0.2.0")]
+[assembly: AssemblyInformationalVersion("1.0.2")]
 [assembly: AssemblyCopyright("MIT licence - see LICENSE")]
 
 namespace FermFrame
 {
     static class AppInfo
     {
-        public const string Version = "1.0.1";   // keep in step with the assembly versions above
+        public const string Version = "1.0.2";   // keep in step with the assembly versions above
     }
 
     static class Program
@@ -222,6 +222,7 @@ namespace FermFrame
     {
         public bool AutoUpdate = true;
         public DateTime LastCheck = DateTime.MinValue;
+        public string NoticesSeen = "";   // one-time notices already dismissed
 
         static string File_ { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "FermFrame", "app.json"); } }
 
@@ -1519,6 +1520,40 @@ namespace FermFrame
             updGo.Click += (s, e) => RunUpdate();
         }
 
+        // One-time "good to know" card: what Brewfather and RAPT need (shown until dismissed)
+        const string PaidPlansNotice = "paid-plans";
+        Panel noticeBar;
+
+        Panel BuildNotice()
+        {
+            noticeBar = new Panel { Dock = DockStyle.Top, Height = 98, Padding = new Padding(0, 0, 0, 14) };
+            noticeBar.Visible = !Demo.On && !(";" + Prefs.NoticesSeen + ";").Contains(";" + PaidPlansNotice + ";");
+            var card = new Card { Dock = DockStyle.Fill, Padding = new Padding(18, 0, 14, 0) };
+            var accent = new Panel { Location = new Point(0, 18), Size = new Size(4, 48), BackColor = UI.Blue };
+            var title = UI.Lbl("Good to know: Brewfather and RAPT need a paid plan", 11, true); title.Location = new Point(18, 12);
+            var text = UI.Lbl("FermFrame gets your readings through their API, which is a paid feature:\n" +
+                              "Brewfather Premium (30-day free trial)  or  RAPT Premium (about $15 a year).", 9, false, UI.Dim);
+            text.Location = new Point(19, 38);
+            var btns = new FlowLayoutPanel { Dock = DockStyle.Right, FlowDirection = FlowDirection.RightToLeft, WrapContents = false, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(0, 22, 0, 0) };
+            var ok = UI.Btn("Got it"); ok.Margin = new Padding(8, 0, 0, 0);
+            var more = UI.Btn("More info"); more.Margin = new Padding(8, 0, 0, 0);
+            btns.Controls.AddRange(new Control[] { ok, more });
+            card.Controls.AddRange(new Control[] { btns, accent, title, text });
+            card.Resize += (s, e) => { int w = Math.Max(UI.Px(120), card.ClientSize.Width - btns.Width - UI.Px(34)); title.MaximumSize = new Size(w, 0); text.MaximumSize = new Size(w, 0); };
+            noticeBar.Controls.Add(card);
+            ok.Click += (s, e) =>
+            {
+                noticeBar.Visible = false;
+                Prefs.NoticesSeen = (Prefs.NoticesSeen + ";" + PaidPlansNotice).Trim(';'); Prefs.Save();
+            };
+            more.Click += (s, e) =>
+            {
+                var url = (Bundled.ProjectUrl != "" ? Bundled.ProjectUrl : "https://github.com/ammcknockiter-cyber/FermFrame") + "/blob/main/docs/MANUAL.md#5-getting-your-brewfather-or-rapt-details";
+                try { Process.Start(url); } catch { }
+            };
+            return noticeBar;
+        }
+
         void ShowUpdateBar()
         {
             if (pending == null) return;
@@ -1671,6 +1706,7 @@ namespace FermFrame
             right.Controls.Add(head);
             right.Controls.Add(empty);
             BuildUpdateBar();
+            right.Controls.Add(BuildNotice());
             right.Controls.Add(updateBar);   // added last, so it sits above everything else
             content.BringToFront();
             Controls.Add(right);
@@ -1698,7 +1734,7 @@ namespace FermFrame
             var c = Sel;
             bool any = c != null;
             empty.Visible = !any;
-            foreach (Control x in right.Controls) if (x != empty && x != updateBar) x.Visible = any;
+            foreach (Control x in right.Controls) if (x != empty && x != updateBar && x != noticeBar) x.Visible = any;
             if (!any) return;
             title.Text = c.Name;
             subtitle.Text = !c.Online ? "Not answering" + (c.Ip != "" ? " at " + c.Ip : "") + ". Check it's plugged in, then press Find my FermFrames."
@@ -1907,7 +1943,7 @@ namespace FermFrame
         // ---------------- Settings
 
         Panel setScroll;
-        Label setNote, saveStatus, lUser, lKey, lBright, passHint, keyHint;
+        Label setNote, saveStatus, lUser, lKey, lBright, passHint, keyHint, payHint;
         TextBox tSsid, tPass, tUser, tKey, tDevice;
         RadioButton rBf, rRapt, rC, rF;
         ComboBox cTheme, cFont, cNLevel, cGraph, cPlot, cRange, cTz;
@@ -1964,6 +2000,7 @@ namespace FermFrame
             var srcBox = new Panel { Location = new Point(X, y), Size = new Size(W, 30) };
             rBf.Location = new Point(0, 2); rRapt.Location = new Point(160, 2);
             srcBox.Controls.AddRange(new Control[] { rBf, rRapt }); add(srcBox); y += 36;
+            payHint = UI.Lbl("", 9, false, UI.Amber); payHint.Location = new Point(X, y); add(payHint); y += 26;
             rBf.CheckedChanged += (s, e) => SourceLabels();
             lUser = label("Brewfather user ID"); tUser = UI.Box(); put(tUser, 38);
             lKey = label("Brewfather API key"); tKey = UI.Box(true); put(tKey, 32);
@@ -2072,6 +2109,7 @@ namespace FermFrame
             bool bf = rBf.Checked;
             lUser.Text = bf ? "Brewfather user ID" : "RAPT email";
             lKey.Text = bf ? "Brewfather API key  (Brewfather: Settings > API > Generate, tick Read batches)" : "RAPT API secret  (RAPT website: My account > API Secrets)";
+            payHint.Text = bf ? "Needs a Brewfather Premium account (30-day free trial)." : "Needs RAPT Premium (about $15 a year).";
         }
 
         void ResetLook()
@@ -2742,7 +2780,7 @@ namespace FermFrame
         {
             Text = "Set up a new FermFrame";
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
-            ClientSize = new Size(560, 780);
+            ClientSize = new Size(560, 798);
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.FixedSingle; MaximizeBox = false; MinimizeBox = false;
             Font = UI.F(10.5f);
@@ -2765,8 +2803,8 @@ namespace FermFrame
             rbBf = UI.Radio("Brewfather"); rbBf.Checked = true; rbBf.Location = new Point(2, 2);
             rbRapt = UI.Radio("RAPT Pill"); rbRapt.Location = new Point(200, 2);
             src.Controls.AddRange(new Control[] { rbBf, rbRapt }); put(src, 34);
-            help = new LinkLabel { AutoSize = false, Height = 44, LinkColor = UI.Amber, ActiveLinkColor = UI.Amber, ForeColor = UI.Dim, Font = UI.F(9.5f) };
-            put(help, 48);
+            help = new LinkLabel { AutoSize = false, Height = 62, LinkColor = UI.Amber, ActiveLinkColor = UI.Amber, ForeColor = UI.Dim, Font = UI.F(9.5f) };
+            put(help, 66);
             l1 = UI.Lbl("Brewfather user ID", 10, false, UI.Dim); put(l1, 24);
             userBox = UI.Box(); put(userBox, 38);
             l2 = UI.Lbl("Brewfather API key", 10, false, UI.Dim); put(l2, 24);
@@ -2802,13 +2840,13 @@ namespace FermFrame
             if (rbBf.Checked)
             {
                 l1.Text = "Brewfather user ID"; l2.Text = "Brewfather API key";
-                help.Text = "Where are these? In Brewfather: Settings > API > Generate API key (tick \"Read batches\"). Click here to open Brewfather.";
+                help.Text = "Needs Brewfather Premium (30-day free trial). Get the ID and key in Brewfather: Settings > API > Generate API key (tick \"Read batches\"). Click here to open Brewfather.";
                 help.Tag = "https://web.brewfather.app/tabs/settings";
             }
             else
             {
                 l1.Text = "RAPT email"; l2.Text = "RAPT API secret (not your password)";
-                help.Text = "Where is this? On the RAPT website: My account > API Secrets > Create. Click here to open RAPT.";
+                help.Text = "Needs RAPT Premium (about $15 a year). Get a secret on the RAPT website: My account > API Secrets > Create. Click here to open RAPT.";
                 help.Tag = "https://app.rapt.io/";
             }
             help.LinkArea = new LinkArea(help.Text.IndexOf("Click here"), 10);

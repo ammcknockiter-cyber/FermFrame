@@ -1,6 +1,6 @@
 # FermFrame user manual
 
-*For FermFrame app 1.0.1 and FermFrame firmware 2.2. The pictures use made-up FermFrames ("Garage fridge",
+*For FermFrame app 1.0.2 and FermFrame firmware 2.2. The pictures use made-up FermFrames ("Garage fridge",
 "Brew closet" and "Kitchen") – yours will show your own names and brews.*
 
 *Prefer watching? There's a 3-minute [video guide on YouTube](https://youtu.be/npmeVGuBcoU).*
@@ -57,7 +57,7 @@ FermFrame is free and open source. It isn't made by or connected with GeekMagic,
 | **A USB power supply** for the clock | Any phone charger. The clock is never plugged into the PC. |
 | **A Windows 10 or 11 PC with Wi-Fi** | Only needed for setting up and for changing settings. A laptop is ideal. A desktop PC without Wi-Fi can still view and change FermFrames, but can't set up new ones. |
 | **2.4 GHz Wi-Fi at home** | Almost every router has it. The clock can't use 5 GHz-only networks. |
-| **Brewfather Premium** (with an API key) **or RAPT** (with an API secret) | See [section 5](#5-getting-your-brewfather-or-rapt-details). Brewfather's API is a **Premium** feature (30-day free trial for new accounts); on the free plan the key won't work. RAPT doesn't need a paid plan. |
+| **Brewfather Premium** (with an API key) **or RAPT** (with an API secret) | See [section 5](#5-getting-your-brewfather-or-rapt-details). Brewfather's API is a **Premium** feature (30-day free trial for new accounts); on the free plan the key won't work. According to [RAPT's docs](https://docs.rapt.io/my-account/subscriptions), RAPT's API needs **RAPT Premium** (about $15 a year). |
 
 ---
 
@@ -129,6 +129,10 @@ FermFrame shows batches whose status is **Fermenting**. Set your batch to Fermen
 appears within one refresh (5 minutes by default).
 
 ### RAPT Pill
+
+> **You probably need RAPT Premium.** According to [RAPT's subscription page](https://docs.rapt.io/my-account/subscriptions), API access – which FermFrame
+> uses – is part of RAPT Premium (about $15 a year). If you can't create an API secret, or the FermFrame says
+> *wrong email or API secret* even though they're right, check your RAPT plan.
 
 1. Sign in on the RAPT website and go to **My account → API Secrets → Create**.
 2. Use your **RAPT email** and the **API secret** – not your RAPT password.
@@ -388,7 +392,7 @@ The pages you picked in [Settings → Pages](#5-pages), in your theme.
 | *Brewfather: wrong ID or API key* | Check the User ID and key (Settings tab). Make sure the key has **Read batches** and your Brewfather account is **Premium** (or in its free trial). If you made a new key in Brewfather, put it on every FermFrame. |
 | *No Fermenting batch in Brewfather* | Set your batch's status to **Fermenting** in Brewfather. |
 | *No batch called '…'* / *No pill called '…'* | The name in **Settings → More → Batch or pill name** doesn't match. Fix it or clear it. |
-| *RAPT: wrong email or API secret* | Use your RAPT email and an **API secret**, not your password. |
+| *RAPT: wrong email or API secret* | Use your RAPT email and an **API secret**, not your password, and check your RAPT plan includes API access (RAPT Premium). |
 | *No RAPT Pill on this account* | Check the pill shows up in the RAPT app. |
 | *Can't reach the internet* | Check your router. It tries again every minute. |
 | *Waiting for internet time* | It needs the time from the internet; check your router. |

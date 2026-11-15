@@ -18,7 +18,10 @@ their firmware up to date.
 - A **Windows 10 or 11** PC with Wi-Fi (only for setup; a laptop is ideal).
 - **2.4 GHz Wi-Fi** at home (most routers have it).
 - A **Brewfather Premium** account with an API key (Settings → API → Generate, tick *Read batches*), or a
-  **RAPT** account with an API secret. Brewfather's API needs a **Premium** subscription (new accounts get a 30-day free trial). RAPT doesn't need a paid plan.
+  **RAPT** account with an API secret.
+
+  **Both need a paid plan for the connection FermFrame uses:** Brewfather's API needs **Brewfather Premium** (new accounts get a
+  30-day free trial), and according to [RAPT's own docs](https://docs.rapt.io/my-account/subscriptions) API access needs **RAPT Premium** (about $15 a year).
 
 ## Install the app
 
