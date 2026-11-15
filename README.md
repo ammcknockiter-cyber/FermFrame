@@ -86,6 +86,11 @@ the QR code on its screen.
 See [docs/DEVELOPING.md](docs/DEVELOPING.md). The firmware builds with PlatformIO; the app builds with the
 C# compiler that comes with Windows.
 
+## Thanks
+
+Thanks to [RaptHooker](https://github.com/roguecode/RaptHooker), which first showed that these clocks can run custom firmware
+installed from their stock update page, and worked out how their screen is wired. FermFrame shares no code with it.
+
 ## Licence
 
 FermFrame is free, open-source software under the [MIT licence](LICENSE). It is built with other open-source
