@@ -17,8 +17,8 @@ their firmware up to date.
   **Not** the SmallTV **Pro** or other ESP32 versions – they use a different chip.
 - A **Windows 10 or 11** PC with Wi-Fi (only for setup; a laptop is ideal).
 - **2.4 GHz Wi-Fi** at home (most routers have it).
-- A **Brewfather** account with an API key (Settings → API → Generate, tick *Read batches*), or a
-  **RAPT** account with an API secret.
+- A **Brewfather Premium** account with an API key (Settings → API → Generate, tick *Read batches*), or a
+  **RAPT** account with an API secret. Brewfather's API needs a **Premium** subscription (new accounts get a 30-day free trial). RAPT doesn't need a paid plan.
 
 ## Install the app
 

@@ -57,7 +57,7 @@ FermFrame is free and open source. It isn't made by or connected with GeekMagic,
 | **A USB power supply** for the clock | Any phone charger. The clock is never plugged into the PC. |
 | **A Windows 10 or 11 PC with Wi-Fi** | Only needed for setting up and for changing settings. A laptop is ideal. A desktop PC without Wi-Fi can still view and change FermFrames, but can't set up new ones. |
 | **2.4 GHz Wi-Fi at home** | Almost every router has it. The clock can't use 5 GHz-only networks. |
-| **Brewfather** (with an API key) **or RAPT** (with an API secret) | See [section 5](#5-getting-your-brewfather-or-rapt-details). Brewfather's API needs a Premium account. |
+| **Brewfather Premium** (with an API key) **or RAPT** (with an API secret) | See [section 5](#5-getting-your-brewfather-or-rapt-details). Brewfather's API is a **Premium** feature (30-day free trial for new accounts); on the free plan the key won't work. RAPT doesn't need a paid plan. |
 
 ---
 
@@ -113,6 +113,9 @@ When your clock arrives, click **It's here – set it up** to go straight to [se
 FermFrame reads your readings straight from Brewfather or RAPT, so each FermFrame needs your account details.
 
 ### Brewfather
+
+> **You need Brewfather Premium.** Brewfather only gives API access – which FermFrame uses – on its Premium plan.
+> New accounts can try Premium free for 30 days. On the free plan the FermFrame will say *wrong ID or API key*.
 
 1. Open Brewfather and go to **Settings → API**.
 2. Click **Generate API key** and tick **Read batches**.
@@ -382,7 +385,7 @@ The pages you picked in [Settings → Pages](#5-pages), in your theme.
 
 | Problem | What to do |
 |---|---|
-| *Brewfather: wrong ID or API key* | Check the User ID and key (Settings tab). Make sure the key has **Read batches**. If you made a new key in Brewfather, put it on every FermFrame. |
+| *Brewfather: wrong ID or API key* | Check the User ID and key (Settings tab). Make sure the key has **Read batches** and your Brewfather account is **Premium** (or in its free trial). If you made a new key in Brewfather, put it on every FermFrame. |
 | *No Fermenting batch in Brewfather* | Set your batch's status to **Fermenting** in Brewfather. |
 | *No batch called '…'* / *No pill called '…'* | The name in **Settings → More → Batch or pill name** doesn't match. Fix it or clear it. |
 | *RAPT: wrong email or API secret* | Use your RAPT email and an **API secret**, not your password. |

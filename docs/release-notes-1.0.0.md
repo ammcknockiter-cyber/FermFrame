@@ -4,6 +4,8 @@ Turn a cheap "Smart Weather Desktop Clock" (GeekMagic SmallTV / SmallTV-Ultra, E
 shows your fermentation from **Brewfather** or **RAPT**: gravity, temperature, ABV and a graph.
 
 **Download `FermFrame-1.0.0.exe` below** (Windows 10/11), open it and click **Install**.
+**You need:** a Brewfather **Premium** account (30-day free trial for new accounts) or a RAPT account.
+
 Windows may say "Windows protected your PC" because the app isn't signed – click **More info → Run anyway**.
 
 ### Guides

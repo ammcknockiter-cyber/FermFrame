@@ -1,6 +1,8 @@
 ## FermFrame 1.0.1
 
 **Download `FermFrame-1.0.1.exe` below**, open it and click **Install** (or **Update** if you have 1.0.0).
+**You need:** a Brewfather **Premium** account (30-day free trial for new accounts) or a RAPT account.
+
 Windows may say "Windows protected your PC" because the app isn't signed – click **More info → Run anyway**.
 
 ### New
