@@ -1,6 +1,6 @@
 # FermFrame user manual
 
-*For FermFrame app 1.0.2 and FermFrame firmware 2.2. The pictures use made-up FermFrames ("Garage fridge",
+*For FermFrame app 1.3 (Windows and Android) and FermFrame firmware 2.5. The pictures use made-up FermFrames ("Garage fridge",
 "Brew closet" and "Kitchen") – yours will show your own names and brews.*
 
 *Prefer watching? There's a 3-minute [video guide on YouTube](https://youtu.be/npmeVGuBcoU).*
@@ -25,7 +25,8 @@
 14. [Questions and answers](#14-questions-and-answers)
 15. [Privacy and security](#15-privacy-and-security)
 16. [Updating and removing the app](#16-updating-and-removing-the-app)
-17. [Getting help](#17-getting-help)
+17. [The Android app](#17-the-android-app)
+18. [Getting help](#18-getting-help)
 
 ---
 
@@ -279,8 +280,8 @@ Here *Brew closet* shows **Ready to keg?** – its gravity has stayed the same f
 
 ![Renaming a FermFrame](manual/images/rename.png)
 
-Click **Rename**, type a name and click **OK**. Names are kept on this PC only – another PC sees *FermFrame 1*,
-*FermFrame 2* and so on until you rename them there too.
+Click **Rename**, type a name and click **OK**. From firmware 2.5 the name is saved **on the FermFrame itself**, so your other PCs
+and the Android app show the same name. (With older firmware the name is kept on this PC only – update the firmware to share it.)
 
 ---
 
@@ -504,8 +505,8 @@ the new Wi-Fi there, or run **Set up a new FermFrame** again.
 FermFrame, free (see [My own hydrometer](#my-own-hydrometer-ispindel-or-gravitymon--free)). A **Tilt** works if it sends its
 readings to **Brewfather** (for example through a TiltBridge or Tilt Pi); direct Tilt support is planned.
 
-**Can I set FermFrames up from two PCs?** Yes. Each PC keeps its own list and names; use **Find my FermFrames** to add
-existing ones.
+**Can I set FermFrames up from two PCs?** Yes. Each PC keeps its own list; use **Find my FermFrames** to add
+existing ones. With firmware 2.5 and later, the names come from the FermFrames, so every PC shows the same ones.
 
 **What if I want my clock back as a weather clock?** FermFrame replaces the clock's original software, and there's no
 one-click way back. GeekMagic publishes its firmware online; experienced users can install it with
@@ -513,6 +514,39 @@ one-click way back. GeekMagic publishes its firmware online; experienced users c
 see or update that clock.
 
 **Is it safe to unplug a FermFrame?** Yes, at any time – except during a firmware update.
+
+### Using the Android app
+
+**Is there a phone app?** Yes – a free Android app that does everything the Windows app does, plus alerts, a home-screen
+widget and sharing a picture of your brew. See [The Android app](#17-the-android-app). There's no iPhone app yet; on an
+iPhone you can still open each FermFrame's own settings page by scanning the QR code on its screen.
+
+**Why isn't it on the Play Store?** FermFrame is a free hobby project. The app is downloaded from the project's GitHub
+Releases page instead, which is why Android asks you to allow installing it.
+
+**Do I need both apps?** No. Use the Windows app, the Android app or both – they work with the same FermFrames.
+
+**Why do my FermFrames have different names on my phone and PC?** Names are stored on the FermFrame from firmware 2.5.
+Update each FermFrame's firmware (Firmware tab) and rename it once – every app then shows that name.
+
+**The app finds no FermFrames.** Make sure the phone is on the **same Wi-Fi** as the FermFrames (not mobile data or a guest
+network) and tap **Find my FermFrames**.
+
+**Setup says it couldn't join the FermFrame's Wi-Fi.** Check the password on the FermFrame's screen and that you tapped
+the FermFrame in Android's **Connect to device** pop-up. If the FermFrame went back to showing your brew, plug it in 3
+times again and start straight away.
+
+**Why does the app ask for location?** Only if you tap **Use my phone's Wi-Fi name** during setup: Android only tells apps
+the Wi-Fi name with location permission. You can say no and type the name instead.
+
+**Alerts don't arrive.** Check alerts are switched on in the app and notifications are allowed for FermFrame in Android's
+settings. Alerts are checked about every 15 minutes, only while the phone is on Wi-Fi; battery savers can delay them.
+
+**Can I share my brew?** Open a FermFrame → **Share this brew**. The app makes a picture with your gravity, temperature,
+ABV and graph, and you pick where to send it.
+
+**How do I update the app?** It tells you when there's a new version – tap **Download**, open the file, tap **Update**. Your
+FermFrames and settings stay.
 
 ---
 
@@ -556,7 +590,73 @@ built with.
 
 ---
 
-## 17. Getting help
+## 17. The Android app
+
+The free **FermFrame app for Android** does everything the Windows app does – and you can use either one, or both.
+It also has a few things that only make sense on a phone: alerts, a home-screen widget and sharing a picture of your brew.
+
+### Installing it
+
+1. On your phone, open the [Releases page](https://github.com/ammcknockiter-cyber/FermFrame/releases/latest) and tap
+   **`FermFrame-<version>.apk`**.
+2. Open the downloaded file. The first time, Android asks to **allow installing apps from this source** (your browser) –
+   allow it, go back and tap **Install**. Google Play Protect may warn that it doesn't know the app: tap
+   **More details → Install anyway**. (The app isn't on the Play Store, so Google hasn't scanned it.)
+3. Open **FermFrame**. It looks for FermFrames on your Wi-Fi straight away.
+
+It needs **Android 8 or newer**; setting up a new FermFrame from the phone needs **Android 10 or newer**. Your phone must
+be on the same Wi-Fi as your FermFrames.
+
+### What's in it
+
+| Screen | What it does |
+|---|---|
+| **My FermFrames** | Every FermFrame with its brew, gravity and temperature. Tap one to open it. **Find my FermFrames** looks again. |
+| **Overview** | Gravity, temperature, ABV, attenuation, day, battery and the graph. **Share this brew** makes a picture to send to friends. **Rename** / **Remove**. |
+| **Settings** | The same settings as the Windows app (Wi-Fi, readings, look & feel, graph, pages, more, settings password) with a **live preview** of the screen. Tap **Save to FermFrame**. |
+| **Firmware** | Updates a FermFrame to the firmware built into the app, or installs a different `.bin` file (checked first). |
+| **+ Set up new** | Sets up a brand-new clock or one showing **Set me up!** – see below. |
+| **🔔 Alerts** | Notifications when a brew is ready to keg, the temperature leaves a range you choose, a FermFrame shows a problem or stops answering. |
+
+### Setting up a FermFrame from the phone
+
+1. Plug the clock in near the phone. For a FermFrame that's already set up, plug it in **3 times in a row** so it shows
+   **Set me up!** and a password (it waits 15 minutes for you).
+2. Tap **+ Set up new**, choose what the clock's screen shows, and check the details. The **Wi-Fi name fills itself in**
+   from your other FermFrames (or tap **Use my phone's Wi-Fi name** – Android asks for location permission, because that's
+   how Android protects Wi-Fi names).
+3. For a FermFrame that's set up already, you can leave the Wi-Fi password and Brewfather/RAPT details **blank** – it keeps
+   the ones it has.
+4. Tap **Set up my FermFrame**. Type the **password from the FermFrame's screen** when asked, then tap the FermFrame in
+   Android's **Connect to device** pop-up. Your phone talks to the clock just for this app – everything else stays on your
+   home Wi-Fi.
+
+### The widget
+
+Long-press an empty spot on your home screen → **Widgets** → **FermFrame**, and drag it on. It shows up to two FermFrames
+with brew, day, gravity and temperature, and refreshes about every 15 minutes while you're on Wi-Fi (and whenever you open
+the app). Tap it to open the app.
+
+### Alerts
+
+Tap **🔔 Alerts**, switch alerts on (Android asks to allow notifications), choose which alerts you want and, for
+temperature, a range for each FermFrame in °C or °F. The phone checks about every 15 minutes while it's on Wi-Fi.
+**Check now** checks straight away. Tap an alert to open that FermFrame.
+
+### Updates
+
+The app checks GitHub for a new version twice a day. When there is one, a card appears at the top: tap **Download**, open
+the file and tap **Update**. Your FermFrames and settings are kept. You can also tap **Check for updates** at the bottom of
+the main screen.
+
+### Privacy
+
+The Android app talks only to FermFrames on your Wi-Fi and to GitHub (to check for updates). Settings passwords are stored
+encrypted on the phone. The location permission (optional) is used only to read your Wi-Fi's name during setup.
+
+---
+
+## 18. Getting help
 
 Ask a question or report a problem on the project's
 [Issues page](https://github.com/ammcknockiter-cyber/FermFrame/issues). Please include:

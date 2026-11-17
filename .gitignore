@@ -22,3 +22,13 @@ docs/video/voice/
 # Private words for the upload check (never published)
 manager/private-words.txt
 
+
+# Android build output and this PC's SDK path
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+*.keystore
+*.jks
+
+android/keystore.properties

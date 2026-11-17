@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ff_bg">#FF141414</color>
+    <color name="ff_icon_bg">#FF181818</color>
+    <style name="Theme.FermFrame" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/ff_bg</item>
+        <item name="android:statusBarColor">@color/ff_bg</item>
+        <item name="android:navigationBarColor">@color/ff_bg</item>
+    </style>
+</resources>

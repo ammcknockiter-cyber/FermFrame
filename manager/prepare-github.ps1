@@ -14,17 +14,21 @@ $publish = @(
   'manager\FermFrameApp.cs', 'manager\build.ps1', 'manager\prepare-github.ps1', 'manager\shops.json', 'manager\README.md',
   'manager\project-url.txt', 'manager\shops-url.txt',
   'installer\FermFrame Installer.bat', 'installer\Read Me.txt',
-  'installer\files\FermFrame-Installer.ps1', 'installer\files\fermframe.bin', 'installer\files\fermframe-lite.bin'
+  'installer\files\FermFrame-Installer.ps1', 'installer\files\fermframe.bin', 'installer\files\fermframe-lite.bin',
+  # Android app source (never keystore.properties, local.properties or build output)
+  'android\build.gradle.kts', 'android\settings.gradle.kts', 'android\gradle.properties', 'android\gradlew', 'android\gradlew.bat',
+  'android\gradle\wrapper\*', 'android\app\build.gradle.kts'
 )
+$recurse = @('android\app\src')   # whole folders
 $n = 0
-foreach ($pattern in $publish) {
-  foreach ($f in Get-ChildItem (Join-Path $root $pattern) -File -Force -ErrorAction SilentlyContinue) {
-    $rel = $f.FullName.Substring($root.Length + 1)
-    $dest = Join-Path $out $rel
-    New-Item -ItemType Directory -Force (Split-Path $dest) | Out-Null
-    Copy-Item $f.FullName $dest
-    $n++
-  }
+$files = @(foreach ($pattern in $publish) { Get-ChildItem (Join-Path $root $pattern) -File -Force -ErrorAction SilentlyContinue })
+$files += foreach ($d in $recurse) { Get-ChildItem (Join-Path $root $d) -File -Recurse -Force }
+foreach ($f in $files) {
+  $rel = $f.FullName.Substring($root.Length + 1)
+  $dest = Join-Path $out $rel
+  New-Item -ItemType Directory -Force (Split-Path $dest) | Out-Null
+  Copy-Item $f.FullName $dest
+  $n++
 }
 
 # Last check: nothing personal or private in the text files. Your own words to look for (Wi-Fi name, account

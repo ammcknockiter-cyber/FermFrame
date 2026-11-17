@@ -41,6 +41,20 @@ Share the link to the Releases page (`https://github.com/YOUR-NAME/FermFrame/rel
 Keep the file names exactly `FermFrame-<version>.exe` and `FermFrame-<version>.exe.sha256` and the tag `v<version>`:
 from 1.0.1 on, everyone's app finds the release by those names, checks the checksum and offers **Update now**.
 
+### The Android app (from 1.3.0)
+
+Every release ships the Windows app and the Android app together, with the same version number.
+
+1. In `android\app\build.gradle.kts` set `versionName` to the same version and raise `versionCode`
+   (e.g. 1.3.0 → 130, 1.3.1 → 131). Android refuses an update with a lower or equal `versionCode`.
+2. Build: `cd android` then `.\gradlew.bat assembleRelease` (JDK 17). The firmware in `installer\files` is built in.
+3. Add `android\app\build\outputs\apk\release\app-release.apk` to the release as **`FermFrame-<version>.apk`**
+   (and its SHA-256 as `FermFrame-<version>.apk.sha256`). The app looks for exactly that name.
+
+**The signing key.** Release APKs are signed with a key kept outside the project (path and passwords in
+`android\keystore.properties`, which git ignores). **Back the key up and never publish it.** Every update must be signed with
+the same key, or phones won't install it over the old app. Without `keystore.properties` the release build is unsigned.
+
 ## Changing the shop links
 
 Edit `manager/shops.json` directly on GitHub (pencil icon) and commit. Apps built with `shops-url.txt`

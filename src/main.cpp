@@ -22,6 +22,10 @@
 //
 // After a power cut: if the home Wi-Fi isn't back yet, the clock offers the
 // setup network for 3 minutes, then restarts and tries again, forever.
+// (Setup mode opened on purpose - plugged in 3 times - waits 15 minutes.)
+//
+// 2.5: the FermFrame keeps its own name ("name" in /save and /fermframe.json),
+// so the Windows and Android apps show the same one.
 //
 // FERMFRAME_LITE build: only Wi-Fi setup, /save and /update - small enough for
 // a brand-new clock's own update page. The installer replaces it with the full
@@ -106,6 +110,8 @@ struct Config {
   // Security
   char apPass[12] = "";         // setup hotspot password, made up once on the device
   char admin[33]  = "";         // optional settings password ("" = none)
+  // 2.5: the FermFrame's own name, so the Windows app and the phone app show the same one
+  char name[33]   = "";
 } cfg;
 
 static const char* CONFIG_FILE = "/config.json";
@@ -114,6 +120,7 @@ static const char* HOSTNAME    = "fermframe";
 static const char* ADMIN_USER  = "fermframe";   // user name for the settings password
 static const char* BOOTS_FILE  = "/boots";      // counts quick plug-ins (forgotten password)
 static const unsigned long SETUP_RETRY_MS = 3UL * 60UL * 1000UL;  // power-cut retry
+static const unsigned long SETUP_ASKED_MS = 15UL * 60UL * 1000UL; // setup opened on purpose (plugged in 3 times): wait longer
 
 bool isLocal()      { return cfg.source[0] == 'l' || cfg.source[0] == 'L'; }   // "local": an iSpindel/GravityMon sends to us
 bool isBrewfather() { return !isLocal() && cfg.source[0] != 'r' && cfg.source[0] != 'R'; }
@@ -164,6 +171,7 @@ void loadConfig() {
     cfg.keg     = d["keg"] | true;
     copyStr(d, "apPass", cfg.apPass, sizeof(cfg.apPass), "");
     copyStr(d, "admin", cfg.admin, sizeof(cfg.admin), "");
+    copyStr(d, "name", cfg.name, sizeof(cfg.name), "");
   }
   f.close();
 }
@@ -179,7 +187,7 @@ void saveConfig() {
   d["nLevel"] = cfg.nLevel; d["graph"] = cfg.graph; d["plot"] = cfg.plot; d["range"] = cfg.rangeH;
   d["pgGraph"] = cfg.pgGraph; d["pgBig"] = cfg.pgBig; d["pgClock"] = cfg.pgClock; d["pgBrews"] = cfg.pgBrews;
   d["pageSecs"] = cfg.pageSecs; d["keg"] = cfg.keg;
-  d["apPass"] = cfg.apPass; d["admin"] = cfg.admin;
+  d["apPass"] = cfg.apPass; d["admin"] = cfg.admin; d["name"] = cfg.name;
   File f = LittleFS.open(CONFIG_FILE, "w");
   if (f) { serializeJson(d, f); f.close(); }
 }
@@ -323,6 +331,17 @@ static String urlEncode(const char* s) {
     char c = *s;
     if (isalnum((unsigned char)c) || c == '-' || c == '_' || c == '.' || c == '~') o += c;
     else { o += '%'; o += hex[(c >> 4) & 15]; o += hex[c & 15]; }
+  }
+  return o;
+}
+
+// Text safe inside a JSON string
+static String jsonText(const char* s) {
+  String o;
+  for (; *s; s++) {
+    if (*s == '"' || *s == '\\') { o += '\\'; o += *s; }
+    else if ((unsigned char)*s < 0x20) o += ' ';
+    else o += *s;
   }
   return o;
 }
@@ -1317,7 +1336,9 @@ void handleRoot() {
 #endif
 
   // ---- More ----
-  c.add(F("<details><summary>More options</summary><label>Batch or pill name (blank = the first one)</label><input name=device value=\""));
+  c.add(F("<details><summary>More options</summary><label>Name for this FermFrame (shown in the apps)</label><input name=name maxlength=32 value=\""));
+  c.add(html(cfg.name));
+  c.add(F("\"><label>Batch or pill name (blank = the first one)</label><input name=device value=\""));
   c.add(html(cfg.device));
   c.add(F("\"><label>Temperature</label><div class=r><label><input type=radio name=unit value=C"));
   if (!isFahrenheit()) c.add(" checked");
@@ -1388,6 +1409,7 @@ void handleSave() {
   copyArg("user", cfg.user, sizeof(cfg.user), false);
   copyArg("secret", cfg.secret, sizeof(cfg.secret), true);
   copyArg("device", cfg.device, sizeof(cfg.device), false);
+  copyArg("name", cfg.name, sizeof(cfg.name), false);   // the apps can send just "name" to rename it
   cfg.refreshMin = argInt("refresh", cfg.refreshMin, 1, 120);
   if (server.hasArg("unit")) strlcpy(cfg.unit, (server.arg("unit")[0] == 'F' || server.arg("unit")[0] == 'f') ? "F" : "C", sizeof(cfg.unit));
   copyArg("tz", cfg.tz, sizeof(cfg.tz), true);
@@ -1453,6 +1475,8 @@ void handleInfo() {
   lastWebHit = millis();
   String j = F("{\"firmware\":\"fermframe\",\"build\":\"" FERMFRAME_BUILD "\",\"version\":\"" FERMFRAME_VERSION "\",\"mac\":\"");
   j += WiFi.macAddress();
+  j += F("\",\"name\":\"");
+  j += jsonText(cfg.name);
   j += F("\",\"mode\":\"");
   j += setupMode ? F("setup") : F("wifi");
   j += F("\",\"ip\":\"");
@@ -1649,7 +1673,7 @@ void loop() {
   if (setupMode) {
     dns.processNextRequest();
     if (cfg.ssid[0] && WiFi.softAPgetStationNum() == 0 &&
-        now - setupSince > SETUP_RETRY_MS && now - lastWebHit > SETUP_RETRY_MS) {
+        now - setupSince > (forcedSetup ? SETUP_ASKED_MS : SETUP_RETRY_MS) && now - lastWebHit > SETUP_RETRY_MS) {
       ESP.restart();   // power-cut recovery: try the home Wi-Fi again
     }
     return;

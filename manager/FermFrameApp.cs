@@ -1,4 +1,4 @@
-// FermFrame - Windows app to look after FermFrame clocks.
+﻿// FermFrame - Windows app to look after FermFrame clocks.
 //  - Finds every FermFrame clock on the home network and shows its brew, graph and health
 //  - Changes a clock's settings (same as its web page)
 //  - Updates a clock's firmware (the firmware files are built into this .exe)
@@ -30,16 +30,16 @@ using System.Windows.Forms;
 [assembly: AssemblyTitle("FermFrame")]
 [assembly: AssemblyProduct("FermFrame")]
 [assembly: AssemblyDescription("Look after your FermFrames")]
-[assembly: AssemblyVersion("1.2.0.0")]
-[assembly: AssemblyFileVersion("1.2.0.0")]
-[assembly: AssemblyInformationalVersion("1.2.0")]
+[assembly: AssemblyVersion("1.3.0.0")]
+[assembly: AssemblyFileVersion("1.3.0.0")]
+[assembly: AssemblyInformationalVersion("1.3.0")]
 [assembly: AssemblyCopyright("MIT licence - see LICENSE")]
 
 namespace FermFrame
 {
     static class AppInfo
     {
-        public const string Version = "1.2.0";   // keep in step with the assembly versions above
+        public const string Version = "1.3.0";   // keep in step with the assembly versions above
     }
 
     static class Program
@@ -2171,6 +2171,10 @@ namespace FermFrame
                         if (c.Busy) continue;
                         if (c.Ip != f.Ip) { c.Ip = f.Ip; c.Settings = null; }
                         c.Info = f.Info; c.Online = true; c.Checked = DateTime.Now;
+                        // Firmware 2.5+ keeps its own name, so every app shows the same one
+                        var stored = UI.Str(f.Info, "name").Trim();
+                        if (stored != "") c.Name = stored;
+                        else if (KeepsName(c)) SendName(c, null);
                     }
                     foreach (var c in clocks) if (!c.Busy && !infos.ContainsKey(c.Mac)) c.Online = false;
                     if (g != null && Sel != null && Sel.Mac == selMac) Sel.Graph = g;
@@ -2305,6 +2309,23 @@ namespace FermFrame
             var n = Prompt.Ask(this, "Rename FermFrame", "Name for this FermFrame (e.g. Garage fridge):", c.Name);
             if (string.IsNullOrWhiteSpace(n)) return;
             c.Name = n.Trim(); Store.Save(clocks); RefreshList(); ShowClock();
+            if (KeepsName(c)) SendName(c, ok => { if (!ok) MessageBox.Show(this, "The new name is saved on this computer, but the FermFrame didn't take it. If it has a settings password, open the Settings tab to type it in, then rename it again.", "FermFrame", MessageBoxButtons.OK, MessageBoxIcon.Information); });
+            else if (c.Online) SetStatus("Renamed on this computer. Update the FermFrame's firmware so your other devices show the same name.");
+        }
+
+        // FermFrame 2.5 and newer store their own name
+        static bool KeepsName(Clock c) { return c.Online && c.Version != "" && !Firmware.Older(c.Version, "2.5.0"); }
+
+        readonly HashSet<string> nameSent = new HashSet<string>();   // sent once per run when the FermFrame had no name yet
+        void SendName(Clock c, Action<bool> done)
+        {
+            if (done == null && !nameSent.Add(c.Mac)) return;
+            string url = c.Base + "/save", name = c.Name;
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                var r = Net.PostForm(url, new Dictionary<string, string> { { "name", name } }, 15);
+                if (done != null) BeginInvoke(new Action(() => done(r.Status == 200)));
+            });
         }
 
         void ForgetClock()

@@ -5,8 +5,9 @@ display that shows your brew's gravity, temperature, ABV and a graph, straight f
 **RAPT Pill**, or – free, with no account – your own **iSpindel** or **GravityMon**. It runs on its own over Wi-Fi:
 no PC, hub or app needs to stay on.
 
-The free Windows app sets up new displays, shows all of them in one place, changes their settings and keeps
-their firmware up to date.
+The free **Windows app** and the free **Android app** set up new displays, show all of them in one place, change their
+settings and keep their firmware up to date. Use either one, or both. The Android app adds alerts, a home-screen widget and
+sharing a picture of your brew.
 
 **[Read the full manual](docs/MANUAL.md)** · **[Watch the 3-minute video guide on YouTube](https://youtu.be/npmeVGuBcoU)**
 
@@ -16,7 +17,7 @@ their firmware up to date.
   **GeekMagic SmallTV** or **SmallTV-Ultra** (ESP8266 chip). The app's **Buy another FermFrame** button links
   to the listing FermFrame was tested with.
   **Not** the SmallTV **Pro** or other ESP32 versions – they use a different chip.
-- A **Windows 10 or 11** PC with Wi-Fi (only for setup; a laptop is ideal).
+- A **Windows 10 or 11** PC with Wi-Fi, **or** an **Android** phone (Android 8+; setting up from the phone needs Android 10+).
 - **2.4 GHz Wi-Fi** at home (most routers have it).
 - Somewhere for the readings to come from, one of:
   - **Your own iSpindel or GravityMon** (app 1.2 / firmware 2.4 and later) – **free, no account, no subscription**: it sends
@@ -37,6 +38,16 @@ their firmware up to date.
 
 To remove it: Windows **Settings → Apps → FermFrame → Uninstall**. Your FermFrames keep working.
 
+## Install the Android app
+
+1. On your phone, open the [Releases page](https://github.com/ammcknockiter-cyber/FermFrame/releases/latest) and tap
+   **`FermFrame-<version>.apk`**.
+2. Open the download. Android asks to allow installing apps from your browser the first time – allow it and tap
+   **Install**. (It isn't on the Play Store, so Play Protect may say it doesn't know the app: **More details → Install anyway**.)
+3. Open **FermFrame** while the phone is on the same Wi-Fi as your FermFrames.
+
+The app tells you when there's a new version. More in the manual: **[The Android app](docs/MANUAL.md#17-the-android-app)**.
+
 ## Set up a FermFrame
 
 1. Plug the clock into power (any USB charger – it isn't connected to the PC).
@@ -53,6 +64,9 @@ Only batches with the status **Fermenting** in Brewfather are shown.
 - **Settings** – Wi-Fi, readings, themes and colours, fonts, brightness and night dimming, graph style and
   range, rotating pages (graph, big number, clock, other brews) and the "Ready to keg?" hint.
 - **Firmware** – updates FermFrames to the version built into the app.
+- **Names** – from firmware 2.5 a FermFrame keeps its own name, so every PC and phone shows the same one.
+- **Android extras** – alerts (ready to keg, temperature out of range, problems, offline), a home-screen widget and
+  **Share this brew**.
 
 Each FermFrame also has its own settings page in a browser: click **Open the FermFrame's web page**, or scan
 the QR code on its screen.
@@ -61,6 +75,7 @@ the QR code on its screen.
 
 - The app talks only to FermFrames on your own network, fetches the shop list from this project and, once a day, asks
   GitHub whether there's a newer version (you can switch this off in **About**). It doesn't collect or send anything about you.
+  The Android app likewise talks only to your FermFrames and to GitHub (update check).
 - Each FermFrame stores your Wi-Fi password and Brewfather/RAPT key on itself and fetches your readings from
   Brewfather or RAPT every few minutes.
 - Saved passwords and keys are never shown again, by the FermFrame or the app.
@@ -83,8 +98,8 @@ the QR code on its screen.
 
 ## Building from source
 
-See [docs/DEVELOPING.md](docs/DEVELOPING.md). The firmware builds with PlatformIO; the app builds with the
-C# compiler that comes with Windows.
+See [docs/DEVELOPING.md](docs/DEVELOPING.md). The firmware builds with PlatformIO; the Windows app builds with the
+C# compiler that comes with Windows; the Android app (`android/`) builds with Gradle and JDK 17.
 
 ## Thanks
 
